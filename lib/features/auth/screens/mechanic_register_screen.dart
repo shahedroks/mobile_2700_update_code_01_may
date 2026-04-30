@@ -1,0 +1,331 @@
+import 'package:flutter/material.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../widgets/app_input.dart';
+import '../../../widgets/buttons.dart';
+
+class MechanicRegisterScreen extends StatelessWidget {
+  const MechanicRegisterScreen({super.key, required this.onNavigate});
+
+  final void Function(String) onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    return _MechanicRegisterBody(onNavigate: onNavigate);
+  }
+}
+
+class _MechanicRegisterBody extends StatefulWidget {
+  const _MechanicRegisterBody({required this.onNavigate});
+
+  final void Function(String) onNavigate;
+
+  @override
+  State<_MechanicRegisterBody> createState() => _MechanicRegisterBodyState();
+}
+
+class _MechanicRegisterBodyState extends State<_MechanicRegisterBody> {
+  bool _showPass = false;
+  bool _showConfirm = false;
+  double _radius = 30;
+  final _password = TextEditingController();
+  final _confirm = TextEditingController();
+  String _businessType = 'sole_trader'; // sole_trader | company
+
+  @override
+  void dispose() {
+    _password.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  bool get _passwordsMatch =>
+      _password.text.isNotEmpty && _confirm.text.isNotEmpty && _password.text == _confirm.text;
+
+  String get _radiusLabel {
+    if (_radius <= 5) return 'Local (≤5 mi)';
+    if (_radius <= 15) return 'Town / City';
+    if (_radius <= 30) return 'Regional';
+    if (_radius <= 50) return 'Wide Area';
+    return 'Nationwide';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextButton.icon(
+                    onPressed: () => widget.onNavigate('role-select'),
+                    icon: const Icon(Icons.chevron_left, size: 16, color: AppColors.textGray),
+                    label: const Text('Back', style: TextStyle(color: AppColors.textGray, fontSize: 12)),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(12)),
+                        child: const Icon(Icons.build_outlined, size: 20, color: Colors.black),
+                      ),
+                      const SizedBox(width: 12),
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('SERVICE PROVIDER', style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                          Text('Create Account', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: AppColors.border),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(14),
+                children: [
+                  const Text(
+                    'BUSINESS TYPE',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _businessTypeCard(
+                          selected: _businessType == 'sole_trader',
+                          icon: Icons.person_outline,
+                          title: 'Sole Trader',
+                          subtitle: 'Working alone',
+                          onTap: () => setState(() => _businessType = 'sole_trader'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _businessTypeCard(
+                          selected: _businessType == 'company',
+                          icon: Icons.apartment_outlined,
+                          title: 'Company',
+                          subtitle: 'Multiple mechanics',
+                          onTap: () => setState(() => _businessType = 'company'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.check_circle, size: 16, color: AppColors.primary),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "You work alone and manage all jobs yourself. You'll see all financial information and job details.",
+                            style: TextStyle(color: AppColors.textGray, fontSize: 11, height: 1.35),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Center(
+                    child: Column(
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 96,
+                              height: 86,
+                              decoration: BoxDecoration(
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: AppColors.borderLight, width: 1),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  Icon(Icons.camera_alt_outlined, size: 22, color: AppColors.textMuted),
+                                  SizedBox(height: 6),
+                                  Text('PHOTO', style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                                ],
+                              ),
+                            ),
+                            Positioned(
+                              right: -6,
+                              bottom: -6,
+                              child: Container(
+                                width: 22,
+                                height: 22,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.add, size: 14, color: Colors.black),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        const Text('Profile photo (optional)', style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text('PERSONAL INFO', style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                  const SizedBox(height: 12),
+                  AppInput(label: 'Full Name', placeholder: 'Themba Dlamini', prefixIcon: const Icon(Icons.person_outline, size: 16, color: AppColors.textGray)),
+                  const SizedBox(height: 16),
+                  AppInput(label: 'Company Name (optional)', placeholder: 'e.g. TechMech Workshop', prefixIcon: const Icon(Icons.business, size: 16, color: AppColors.textGray)),
+                  const SizedBox(height: 16),
+                  AppInput(label: 'Email Address', placeholder: 'themba@fix.co.za', keyboardType: TextInputType.emailAddress, prefixIcon: const Icon(Icons.email_outlined, size: 16, color: AppColors.textGray)),
+                  const SizedBox(height: 16),
+                  AppInput(label: 'Phone Number', placeholder: '+27 82 000 0000', keyboardType: TextInputType.phone, prefixIcon: const Icon(Icons.phone_outlined, size: 16, color: AppColors.textGray)),
+                  const SizedBox(height: 24),
+                  const Text('RATES (ZAR)', style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                  const SizedBox(height: 12),
+                  AppInput(label: 'Call-out Charge', placeholder: '350', keyboardType: TextInputType.number, prefixIcon: const Icon(Icons.attach_money, size: 16, color: AppColors.textGray)),
+                  const SizedBox(height: 16),
+                  AppInput(label: 'Hourly Rate', placeholder: '850', keyboardType: TextInputType.number, prefixIcon: const Icon(Icons.attach_money, size: 16, color: AppColors.textGray)),
+                  const SizedBox(height: 16),
+                  AppInput(label: 'Emergency Surcharge', placeholder: '500', keyboardType: TextInputType.number, prefixIcon: const Icon(Icons.flash_on, size: 16, color: AppColors.error)),
+                  const SizedBox(height: 24),
+                  const Text('SERVICE AREA', style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                  const SizedBox(height: 12),
+                  AppInput(label: 'Base Postcode', placeholder: 'e.g. 1685', prefixIcon: const Icon(Icons.location_on_outlined, size: 16, color: AppColors.textGray)),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('COVERAGE RADIUS', style: TextStyle(color:AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 2),
+                      ),
+                      Text('${_radius.toInt()} mi · $_radiusLabel', style: const TextStyle(color: AppColors.textGray, fontSize: 10)),
+                    ],
+                  ),
+                  Slider(value: _radius, min: 5, max: 100, divisions: 19, activeColor: AppColors.primary, onChanged: (v) => setState(() => _radius = v)),
+                  const SizedBox(height: 24),
+                  const Text('SECURITY', style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                  const SizedBox(height: 12),
+                  AppInput(
+                    label: 'Password',
+                    placeholder: 'Create a strong password',
+                    obscureText: !_showPass,
+                    controller: _password,
+                    prefixIcon: const Icon(Icons.lock_outline, size: 16, color: AppColors.textGray),
+                    suffixIcon: IconButton(icon: Icon(_showPass ? Icons.visibility_off : Icons.visibility, size: 16, color: AppColors.textGray), onPressed: () => setState(() => _showPass = !_showPass)),
+                  ),
+                  const SizedBox(height: 16),
+                  AppInput(
+                    label: 'Confirm Password',
+                    placeholder: 'Re-enter your password',
+                    obscureText: !_showConfirm,
+                    controller: _confirm,
+                    prefixIcon: const Icon(Icons.lock_outline, size: 16, color: AppColors.textGray),
+                    suffixIcon: IconButton(icon: Icon(_showConfirm ? Icons.visibility_off : Icons.visibility, size: 16, color: AppColors.textGray), onPressed: () => setState(() => _showConfirm = !_showConfirm)),
+                  ),
+                  if (_password.text.isNotEmpty && _confirm.text.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        children: [
+                          Icon(_passwordsMatch ? Icons.check : Icons.close, size: 12, color: _passwordsMatch ? AppColors.success : AppColors.error),
+                          const SizedBox(width: 4),
+                          Text(_passwordsMatch ? 'Passwords match' : "Passwords don't match", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: _passwordsMatch ? AppColors.success : AppColors.error)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: AppColors.border),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+              child: Column(
+                children: [
+                  PrimaryButton(label: 'Create Account →', onPressed: () => widget.onNavigate('mechanic-terms')),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('Already registered? ', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                      GestureDetector(
+                        onTap: () => widget.onNavigate('login'),
+                        child: const Text('Sign in', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Widget _businessTypeCard({
+  required bool selected,
+  required IconData icon,
+  required String title,
+  required String subtitle,
+  required VoidCallback onTap,
+}) {
+  return InkWell(
+    borderRadius: BorderRadius.circular(14),
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111111),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: 1),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: selected ? AppColors.primary : AppColors.textGray),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            style: TextStyle(
+              color: selected ? AppColors.primary : Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
