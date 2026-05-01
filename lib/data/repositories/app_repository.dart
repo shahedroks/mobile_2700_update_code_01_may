@@ -85,9 +85,30 @@ class MemoryJobRepository implements JobRepository {
 
   @override
   List<Vehicle> fleetVehicles() => const [
-        Vehicle(id: 'v1', label: 'Volvo FH16', plate: 'LD 882 TF', type: 'Tractor'),
-        Vehicle(id: 'v2', label: 'Scania R450', plate: 'B12 XYZ', type: 'Tractor'),
-        Vehicle(id: 'v3', label: 'Mercedes Actros', plate: 'KX19 ABC', type: 'Rigid'),
+        Vehicle(
+          id: 'fv1',
+          label: 'MAN TGX 18.640',
+          plate: 'CA 456-789',
+          type: 'Tautliner',
+          categoryBadge: 'TAUTLINER',
+          lastService: '15 Jan 2025',
+        ),
+        Vehicle(
+          id: 'fv2',
+          label: 'Mercedes-Benz Actros 2545',
+          plate: 'GP 331-876',
+          type: 'Rigid',
+          categoryBadge: 'RIGID 8T',
+          lastService: '3 Feb 2025',
+        ),
+        Vehicle(
+          id: 'fv3',
+          label: 'Volvo FH16 750',
+          plate: 'KZN 44-221',
+          type: 'Tanker',
+          categoryBadge: 'TANKER',
+          lastService: '28 Dec 2024',
+        ),
       ];
 
   @override

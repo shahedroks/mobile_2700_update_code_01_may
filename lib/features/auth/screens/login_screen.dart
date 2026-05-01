@@ -9,8 +9,9 @@ import '../viewmodel/auth_viewmodel.dart';
 import '../../../widgets/buttons.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.onNavigate});
+  const LoginScreen({super.key, required this.role, required this.onNavigate});
 
+  final UserRole role;
   final void Function(String) onNavigate;
 
   @override
@@ -51,6 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final roleLabel = widget.role == UserRole.mechanic ? 'SERVICE PROVIDER' : 'FLEET';
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       body: SafeArea(
@@ -194,11 +196,11 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 24),
               PrimaryButton(
-                label: 'SIGN IN TO TRUCKFIX',
+                label: 'SIGN IN AS $roleLabel',
                 onPressed: () async {
-                  await context.read<AuthViewModel>().quickLogin(UserRole.fleet);
+                  await context.read<AuthViewModel>().quickLogin(widget.role);
                   if (!context.mounted) return;
-                  widget.onNavigate('fleet-dashboard');
+                  widget.onNavigate(widget.role == UserRole.mechanic ? 'mechanic-dashboard' : 'fleet-dashboard');
                 },
               ),
               const SizedBox(height: 100),

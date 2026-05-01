@@ -36,9 +36,9 @@ class _RoleSelectBodyState extends State<_RoleSelectBody> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextButton.icon(
-                onPressed: () => widget.onNavigate('login'),
+                onPressed: () => widget.onNavigate('splash'),
                 icon: const Icon(Icons.chevron_left, size: 16, color: AppColors.textGray),
-                label: const Text('Back to Login', style: TextStyle(color: AppColors.textGray, fontSize: 12)),
+                label: const Text('Back', style: TextStyle(color: AppColors.textGray, fontSize: 12)),
               ),
               const SizedBox(height: 24),
               const Text('Who are you?', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
@@ -58,7 +58,7 @@ class _RoleSelectBodyState extends State<_RoleSelectBody> {
               _RoleCard(
                 id: 'mechanic',
                 icon:  Icons.build_outlined,
-                title: 'Mechanic / Technician',
+                title: 'Service Provider',
                 subtitle: 'Accept jobs & earn money helping fleets',
                 perks: const ['Browse nearby jobs', 'Submit competitive quotes', 'Get paid instantly'],
                 selected: _selected == 'mechanic',
@@ -66,10 +66,12 @@ class _RoleSelectBodyState extends State<_RoleSelectBody> {
               ),
               const SizedBox(height: 32),
               PrimaryButton(
-                label: _selected == null ? 'Continue as ...' : 'Continue as ${_selected == 'fleet' ? 'Fleet Operator' : 'Mechanic'}',
+                label: _selected == null ? 'Continue as ...' : 'Continue as ${_selected == 'fleet' ? 'Fleet Operator' : 'Service Provider'}',
                 onPressed: _selected == null
                     ? null
-                    : () => widget.onNavigate(_selected == 'fleet' ? 'fleet-register' : 'mechanic-register'),
+                    : () => widget.onNavigate(
+                          _selected == 'fleet' ? '/login?role=fleet' : '/login?role=mechanic',
+                        ),
               ),
             ],
           ),

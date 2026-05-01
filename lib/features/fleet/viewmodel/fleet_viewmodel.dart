@@ -33,13 +33,14 @@ class FleetViewModel extends ChangeNotifier {
 
   void selectVehicle(Vehicle v) {
     selectedVehicle = v;
+    showVehicles = false;
     tab = 'vehicle-detail';
     notifyListeners();
   }
 
   void clearSelectedVehicle() {
     selectedVehicle = null;
-    tab = 'vehicles';
+    tab = 'profile';
     notifyListeners();
   }
 

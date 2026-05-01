@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../viewmodel/fleet_viewmodel.dart';
 
-/// Full-screen fleet notifications overlay (matches fleet dashboard black bg).
+/// Fleet notifications (`NotificationsScreen` / fleet reference UI).
 class FleetNotificationsOverlay extends StatefulWidget {
   const FleetNotificationsOverlay({super.key});
 
@@ -29,7 +29,13 @@ class _NotifRowModel {
 }
 
 class _FleetNotificationsOverlayState extends State<FleetNotificationsOverlay> {
-  static const Color _bgBlack = Color(0xFF000000);
+  /// Main screen background (very dark brown-black).
+  static const Color _bg = Color(0xFF0A0A05);
+  /// Unread row highlight.
+  static const Color _unreadRowBg = Color(0xFF14140D);
+  static const Color _divider = Color(0xFF252520);
+  static const Color _bodyMuted = Color(0xFFA8A29E);
+  static const Color _quotePurple = Color(0xFF6366F1);
 
   late final List<_NotifRowModel> _rows;
 
@@ -42,71 +48,44 @@ class _FleetNotificationsOverlayState extends State<FleetNotificationsOverlay> {
         detail: 'Deon van Wyk quoted £145 for TF-8821',
         when: '2 min ago',
         unread: true,
-        leading: _notifLeadingGrey(Icons.description_outlined),
+        leading: _leadingSolid(_quotePurple, Icons.payments_rounded),
       ),
       _NotifRowModel(
         headline: 'Quote Accepted',
         detail: 'You accepted the quote. Waiting for mechanic to start journey',
         when: '1 hr ago',
         unread: true,
-        leading: _notifLeadingSolid(AppColors.green, Icons.check_rounded),
+        leading: _leadingSolid(AppColors.green, Icons.check_rounded),
       ),
       _NotifRowModel(
         headline: 'Mechanic Started Journey',
         detail: 'Deon is on the way to your vehicle, ETA 15 min',
         when: '1 hr ago',
         unread: false,
-        leading: _notifLeadingSolid(AppColors.red, Icons.directions_car_rounded),
+        leading: _leadingSolid(AppColors.red, Icons.directions_car_rounded),
       ),
       _NotifRowModel(
         headline: 'Job Completed',
         detail: 'Please approve completion for TF-8801',
         when: '2 hrs ago',
         unread: false,
-        leading: _notifLeadingSolid(AppColors.green, Icons.check_rounded),
-      ),
-      _NotifRowModel(
-        headline: 'Payment Processed',
-        detail: '£145.00 charged to card ending 4242',
-        when: '3 hrs ago',
-        unread: false,
-        leading: _notifLeadingSolid(AppColors.orange, Icons.credit_card_rounded),
-      ),
-      _NotifRowModel(
-        headline: 'Review Reminder',
-        detail: 'Rate your experience with Sipho Molefe',
-        when: '5 hrs ago',
-        unread: false,
-        leading: _notifLeadingSolid(AppColors.primary, Icons.star_rounded),
+        leading: _leadingSolid(AppColors.green, Icons.check_rounded),
       ),
     ];
   }
 
   int get _unreadCount => _rows.where((r) => r.unread).length;
 
-  static Widget _notifLeadingGrey(IconData icon) {
+  static Widget _leadingSolid(Color bg, IconData icon) {
     return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: const Color(0xFF262626),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      alignment: Alignment.center,
-      child: Icon(icon, color: Colors.white.withValues(alpha: 0.85), size: 24),
-    );
-  }
-
-  static Widget _notifLeadingSolid(Color bg, IconData icon) {
-    return Container(
-      width: 48,
-      height: 48,
+      width: 40,
+      height: 40,
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
       ),
       alignment: Alignment.center,
-      child: Icon(icon, color: Colors.white, size: 24),
+      child: Icon(icon, color: Colors.white, size: 22),
     );
   }
 
@@ -124,30 +103,29 @@ class _FleetNotificationsOverlayState extends State<FleetNotificationsOverlay> {
 
     return Positioned.fill(
       child: Material(
-        color: _bgBlack,
+        color: _bg,
         child: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 12, 16),
+                padding: const EdgeInsets.fromLTRB(8, 8, 12, 12),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    InkWell(
+                    Material(
+                      color: const Color(0xFF1A1A1A),
+                      shape: const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
                         onTap: vm.closeNotifications,
-                        //customBorder: const CircleBorder(),
-                        child:  Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(14),
-                            color: const Color(0xFF262626),
-                          ),
-                          width: 44,
+                        child: const SizedBox(
+                          width: 40,
                           height: 40,
-                          child: Icon(Icons.arrow_back, color: Colors.white, size: 18),
+                          child: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
                         ),
                       ),
-
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Padding(
@@ -157,12 +135,21 @@ class _FleetNotificationsOverlayState extends State<FleetNotificationsOverlay> {
                           children: [
                             const Text(
                               'Notifications',
-                              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.3,
+                              ),
                             ),
-                            const SizedBox(height: 5),
+                            const SizedBox(height: 4),
                             Text(
                               _unreadCount == 0 ? 'All caught up' : '$_unreadCount unread',
-                              style: const TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.w700),
+                              style: const TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ],
                         ),
@@ -174,13 +161,17 @@ class _FleetNotificationsOverlayState extends State<FleetNotificationsOverlay> {
                         onPressed: _unreadCount == 0 ? null : _markAllRead,
                         style: TextButton.styleFrom(
                           foregroundColor: AppColors.primary,
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         child: const Text(
                           'MARK ALL READ',
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.4),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 11,
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ),
                     ),
@@ -191,24 +182,23 @@ class _FleetNotificationsOverlayState extends State<FleetNotificationsOverlay> {
                 child: ListView.separated(
                   padding: const EdgeInsets.only(bottom: 24),
                   itemCount: _rows.length,
-                  separatorBuilder: (_, __) =>
-                      Divider(height: 1, thickness: 1, color: Colors.white.withValues(alpha: 0.06)),
+                  separatorBuilder: (_, __) => const Divider(height: 1, thickness: 1, color: _divider),
                   itemBuilder: (context, i) {
                     final r = _rows[i];
                     return Material(
-                      color: Colors.transparent,
+                      color: r.unread ? _unreadRowBg : _bg,
                       child: InkWell(
                         onTap: () {
                           if (!r.unread) return;
                           setState(() => r.unread = false);
                         },
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               r.leading,
-                              const SizedBox(width: 14),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -216,23 +206,29 @@ class _FleetNotificationsOverlayState extends State<FleetNotificationsOverlay> {
                                     Text(
                                       r.headline,
                                       style: const TextStyle(
-                                          color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
+                                        color: Colors.white,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                     const SizedBox(height: 6),
                                     Text(
                                       r.detail,
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.72),
+                                      style: const TextStyle(
+                                        color: _bodyMuted,
                                         fontSize: 13,
-                                        height: 1.35,
+                                        height: 1.4,
                                         fontWeight: FontWeight.w400,
                                       ),
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
                                       r.when,
-                                      style: const TextStyle(
-                                          color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w500),
+                                      style: TextStyle(
+                                        color: AppColors.textMuted.withValues(alpha: 0.95),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -240,12 +236,14 @@ class _FleetNotificationsOverlayState extends State<FleetNotificationsOverlay> {
                               const SizedBox(width: 8),
                               if (r.unread)
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 4),
+                                  padding: const EdgeInsets.only(top: 6),
                                   child: Container(
                                     width: 8,
                                     height: 8,
-                                    decoration:
-                                        const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.primary,
+                                      shape: BoxShape.circle,
+                                    ),
                                   ),
                                 )
                               else

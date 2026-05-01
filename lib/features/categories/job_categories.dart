@@ -21,6 +21,22 @@ abstract final class JobCategories {
     'Recovery',
     'Other',
   ];
+
+  /// Job category picker (`PostJob` / `check.tsx` — `JOB_TYPES`).
+  static const List<(String emoji, String label)> postJobCategories = [
+    ('🛞', 'Flat / Damaged Tyre'),
+    ('🔋', 'Battery Failure / Jump Start'),
+    ('🔑', "Engine Won't Start"),
+    ('🚧', 'Breakdown (Unknown Issue)'),
+    ('🌡️', 'Overheating'),
+    ('🛑', 'Brake Problem'),
+    ('⚡', 'Electrical Issue'),
+    ('⛽', 'Fuel Issue (Wrong Fuel / Empty)'),
+    ('🚛', 'Vehicle Recovery / Towing'),
+    ('🔧', 'Diagnostic Check'),
+    ('🔒', 'Locked Out of Vehicle'),
+    ('📋', 'Other (Describe in Notes)'),
+  ];
 }
 
 abstract final class JobFeedMock {

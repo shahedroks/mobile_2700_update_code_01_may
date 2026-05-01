@@ -158,7 +158,7 @@ class SplashScreen extends StatelessWidget {
                         child: SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: () => onNavigate('login'),
+                            onPressed: () => onNavigate('role-select'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: _kAccentYellow,
                               foregroundColor: Colors.black,
@@ -189,7 +189,7 @@ class SplashScreen extends StatelessWidget {
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        onPressed: () => onNavigate('login'),
+                        onPressed: () => onNavigate('role-select'),
                         child: Text.rich(
                           TextSpan(
                             style: const TextStyle(
@@ -199,9 +199,9 @@ class SplashScreen extends StatelessWidget {
                               color: Color(0xFFFFFFFF),
                             ),
                             children: [
-                              const TextSpan(text: 'Already registered? '),
+                              const TextSpan(text: 'Continue to login as '),
                               TextSpan(
-                                text: 'Login',
+                                text: 'Fleet / Mechanic',
                                 style: const TextStyle(
                                   color: _kAccentYellow,
                                   fontWeight: FontWeight.w700,

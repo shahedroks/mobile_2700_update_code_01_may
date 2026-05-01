@@ -12,6 +12,7 @@ import '../features/auth/screens/splash_screen.dart';
 import '../features/auth/screens/terms_screen.dart';
 import '../features/auth/viewmodel/auth_viewmodel.dart';
 import '../features/auth/logic/splash_login_check.dart';
+import '../data/models/session.dart';
 import '../features/company/screens/company_app_shell.dart';
 import '../features/employee/screens/employee_app_shell.dart';
 import '../features/fleet/screens/fleet_app_shell.dart';
@@ -98,9 +99,18 @@ abstract final class AppRouter {
         ),
         GoRoute(
           path: AppRoutes.login,
-          builder: (context, state) => LoginScreen(
-            onNavigate: (id) => navigateAuth(context, id),
-          ),
+          builder: (context, state) {
+            final roleParam = state.uri.queryParameters['role'];
+            final role = switch (roleParam) {
+              'mechanic' => UserRole.mechanic,
+              'fleet' => UserRole.fleet,
+              _ => UserRole.fleet,
+            };
+            return LoginScreen(
+              role: role,
+              onNavigate: (id) => navigateAuth(context, id),
+            );
+          },
         ),
         GoRoute(
           path: AppRoutes.forgot,
