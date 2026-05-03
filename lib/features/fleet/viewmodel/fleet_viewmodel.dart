@@ -10,6 +10,8 @@ class FleetViewModel extends ChangeNotifier {
 
   String tab = 'dashboard';
   bool profileComplete = false;
+  /// When opening edit-profile from the post-job gate, return here on save/cancel instead of profile.
+  String? _returnTabAfterProfileEdit;
   Vehicle? selectedVehicle;
   Vehicle? prefilledVehicle;
   bool showHelp = false;
@@ -20,14 +22,38 @@ class FleetViewModel extends ChangeNotifier {
 
   List<Vehicle> get vehicles => _jobs.fleetVehicles();
 
+  /// True while edit-profile was opened from the Post Job gate (save/cancel returns to Post Job).
+  bool get isEditingProfileForPostJob => _returnTabAfterProfileEdit == 'post-job';
+
   void setTab(String value) {
     tab = value;
     notifyListeners();
   }
 
+  void openFleetEditProfile({required bool fromPostJobGate}) {
+    _returnTabAfterProfileEdit = fromPostJobGate ? 'post-job' : null;
+    tab = 'edit-profile';
+    notifyListeners();
+  }
+
+  void cancelFleetEditProfile() {
+    tab = _returnTabAfterProfileEdit ?? 'profile';
+    _returnTabAfterProfileEdit = null;
+    notifyListeners();
+  }
+
   void markProfileComplete() {
     profileComplete = true;
-    tab = 'profile';
+    tab = _returnTabAfterProfileEdit ?? 'profile';
+    _returnTabAfterProfileEdit = null;
+    notifyListeners();
+  }
+
+  /// Post Job gate: advance to the full job form (same tab). Profile details remain editable under Profile.
+  void unlockPostJobFormFromGate() {
+    profileComplete = true;
+    _returnTabAfterProfileEdit = null;
+    tab = 'post-job';
     notifyListeners();
   }
 
@@ -104,6 +130,7 @@ class FleetViewModel extends ChangeNotifier {
 
   String get bottomNavActive {
     if (tab == 'tracking-detail' || tab == 'quote-received') return 'tracking';
+    if (tab == 'edit-profile' && isEditingProfileForPostJob) return 'post-job';
     if (tab == 'edit-profile' || tab == 'payment-methods' || tab == 'vehicles' || tab == 'vehicle-detail') {
       return 'profile';
     }

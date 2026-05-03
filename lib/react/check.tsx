@@ -1,427 +1,1727 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  LayoutDashboard, PlusCircle, Navigation, User, Wrench, Bell,
-  MapPin, ChevronRight, Clock, AlertTriangle, CheckCircle, Zap,
-  Truck, Phone, Star, CreditCard, Building2, X, ArrowUp, Settings,
-  FileText, TrendingUp, Calendar, Shield, Edit3, LogOut, Package,
-  ChevronDown, ChevronUp, AlertCircle, Check, Lock, Search, Crosshair,
-  Camera, ImageIcon, UserCircle, MessageCircle, ExternalLink, Download, FileCheck, ArrowLeft,
-  HelpCircle, Send, Briefcase, DollarSign
+  LayoutDashboard, Users, Briefcase, TrendingUp, Clock,
+  MapPin, Star, ChevronRight, Plus, Search, Filter, Calendar,
+  DollarSign, CheckCircle, AlertCircle, User, UserPlus, Award,
+  Activity, Target, Zap, Phone, Mail, MoreVertical, Eye, Edit, Edit3,
+  ChevronDown, ChevronLeft, X, MessageCircle, FileText, Ban, HelpCircle, LogOut, Trash2, Download, Send, Wrench
 } from 'lucide-react';
-import { ChatScreen, CancelJobSheet, NotificationsScreen, PaymentMethodsScreen, VehicleFleetScreen } from '../shared/TruckFixFeatures';
 
-const MECHANIC_IMG = "https://images.unsplash.com/photo-1615906655593-ad0386982a0f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtYWxlJTIwbWVjaGFuaWMlMjBwb3J0cmFpdCUyMHByb2Zlc3Npb25hbHxlbnwxfHx8fDE3NzI5MTk3NjB8MA&ixlib=rb-4.1.0&q=80&w=400";
-
-function PrimaryBtn({ children, onClick, className = '' }: any) {
-  return (
-    <button onClick={onClick} className={`w-full bg-yellow-400 text-black py-4 rounded-xl font-black text-sm tracking-widest uppercase active:scale-[0.98] transition-transform ${className}`}>
-      {children}
-    </button>
-  );
-}
-
-function Input({ label, placeholder, type = 'text' }: any) {
-  return (
-    <div className="space-y-1.5">
-      {label && <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">{label}</label>}
-      <input type={type} placeholder={placeholder} className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-sm" />
-    </div>
-  );
-}
-
-function MapPreview({ height = 180, showRoute = false }: { height?: number; showRoute?: boolean }) {
-  return (
-    <div className="relative rounded-xl overflow-hidden border border-[#2a2a2a]" style={{ height }}>
-      <div className="absolute inset-0 bg-[#0d1520]" />
-      <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(#1a2535 1px, transparent 1px), linear-gradient(90deg, #1a2535 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
-      <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 390 ${height}`} preserveAspectRatio="none">
-        {/* Roads */}
-        <path d={`M0 ${height * 0.5} Q130 ${height * 0.42} 195 ${height * 0.5} Q260 ${height * 0.58} 390 ${height * 0.5}`} stroke="#1e3a4f" strokeWidth="14" fill="none" />
-        <path d={`M0 ${height * 0.5} Q130 ${height * 0.42} 195 ${height * 0.5} Q260 ${height * 0.58} 390 ${height * 0.5}`} stroke="#264a5e" strokeWidth="7" fill="none" />
-        <line x1="195" y1="0" x2="195" y2={height} stroke="#1e3a4f" strokeWidth="10" />
-        <line x1="195" y1="0" x2="195" y2={height} stroke="#264a5e" strokeWidth="4" strokeDasharray="12 8" />
-        <line x1="0" y1={height * 0.22} x2="390" y2={height * 0.22} stroke="#1a3040" strokeWidth="6" />
-        <line x1="0" y1={height * 0.78} x2="390" y2={height * 0.78} stroke="#1a3040" strokeWidth="6" />
-        {showRoute && <path d="M75 140 Q195 60 315 145" stroke="#FBBF24" strokeWidth="2.5" fill="none" strokeDasharray="8 5" opacity="0.8" />}
-        {/* Origin pin */}
-        <circle cx="75" cy={height * 0.6} r="9" fill="#FBBF24" />
-        <circle cx="75" cy={height * 0.6} r="4.5" fill="#000" />
-        {/* Dest pin */}
-        <circle cx="315" cy={height * 0.55} r="9" fill="#ef4444" />
-        <circle cx="315" cy={height * 0.55} r="4" fill="#fff" />
-        {/* Mechanic dot */}
-        {showRoute && <circle cx="185" cy={height * 0.38} r="7" fill="#22c55e" />}
-        {showRoute && <circle cx="185" cy={height * 0.38} r="3.5" fill="#fff" />}
-      </svg>
-      <div className="absolute bottom-2 left-3 text-[10px] text-gray-600 font-medium">TruckFix Maps</div>
-      <div className="absolute top-2 right-2 bg-black/60 rounded-lg px-2 py-1 text-[10px] text-yellow-400 font-semibold border border-yellow-400/20">
-        LIVE
-      </div>
-    </div>
-  );
-}
-
-// ─── Dashboard ───────────────────────────────────────���────────────────────────────
-
-// ─── Dashboard: Quotes for Posted Job ─────────────────────────────────────────
-const POSTED_QUOTES = [
-  { id:'q1', name:'James Mitchell',   rating:4.8, jobs:211, verified:true,  distance:'4.2 km', eta:'12 min', img:MECHANIC_IMG, labour:'£85', callout:'£35', parts:'£25', total:'£145', speciality:'Tyres & Suspension', responded:'2 min ago' },
-  { id:'q2', name:'Tom Stevens',   rating:4.7, jobs:163, verified:true,  distance:'7.8 km', eta:'22 min', img:MECHANIC_IMG, labour:'£80', callout:'£35', parts:'£20', total:'£135', speciality:'Tyres & Axles',       responded:'5 min ago' },
-  { id:'q3', name:'Paul Davies',  rating:4.5, jobs:98,  verified:false, distance:'11 km',  eta:'31 min', img:MECHANIC_IMG, labour:'£70', callout:'£30', parts:'£18', total:'£118', speciality:'General HGV',          responded:'9 min ago' },
+// Mock Data
+const MECHANICS = [
+  { id: 'M-001', name: 'John Smith', status: 'active', activeJobs: 2, rating: 4.8, completed: 45, phone: '07700 900123', email: 'john.smith@example.com', joinedDate: 'Jan 2024', specialties: ['Engine Repair', 'Diagnostics', 'Brake Systems'] },
+  { id: 'M-002', name: 'Mike Johnson', status: 'active', activeJobs: 1, rating: 4.9, completed: 38, phone: '07700 900456', email: 'mike.johnson@example.com', joinedDate: 'Mar 2024', specialties: ['Electrical', 'Air Systems', 'Transmission'] },
+  { id: 'M-003', name: 'Dave Wilson', status: 'busy', activeJobs: 3, rating: 4.7, completed: 52, phone: '07700 900789', email: 'dave.wilson@example.com', joinedDate: 'Nov 2023', specialties: ['Suspension', 'Steering', 'Tyre Services'] },
+  { id: 'M-004', name: 'Tom Brown', status: 'offline', activeJobs: 0, rating: 4.6, completed: 29, phone: '07700 900321', email: 'tom.brown@example.com', joinedDate: 'May 2024', specialties: ['Hydraulics', 'Cooling Systems', 'General Service'] },
 ];
 
-function DashboardJobSheet({ job, onClose, onOpenChat, onCancel }: { job: any; onClose: () => void; onOpenChat?: () => void; onCancel?: () => void }) {
-  const [expandedQuote, setExpandedQuote] = useState<string | null>(null);
-  const [accepted, setAccepted] = useState<string | null>(null);
-  const isPosted = job.status === 'POSTED';
+// Available jobs to quote on (NEW)
+const AVAILABLE_JOBS = [
+  { id: 'TF-8901', vehicle: 'DAF XF', issue: 'Engine warning light', urgency: 'urgent', location: 'M1 Services', distance: '8 miles', time: '5 min ago', fleetRating: 4.7 },
+  { id: 'TF-8902', vehicle: 'Scania R450', issue: 'Brake system fault', urgency: 'high', location: 'Birmingham', distance: '12 miles', time: '18 min ago', fleetRating: 4.9 },
+  { id: 'TF-8903', vehicle: 'Volvo FH16', issue: 'Coolant leak', urgency: 'medium', location: 'Manchester', distance: '25 miles', time: '45 min ago', fleetRating: 4.5 },
+  { id: 'TF-8904', vehicle: 'Mercedes Actros', issue: 'Electrical fault', urgency: 'low', location: 'Leeds', distance: '32 miles', time: '1 hr ago', fleetRating: 4.8 },
+  { id: 'TF-8905', vehicle: 'MAN TGX', issue: 'Flat tyre + inspection', urgency: 'high', location: 'Sheffield', distance: '18 miles', time: '23 min ago', fleetRating: 4.6 },
+];
+
+// My quotes (jobs company has quoted on)
+const MY_QUOTES = [
+  { id: 'TF-8898', vehicle: 'DAF CF', issue: 'Oil leak', status: 'pending', quote: '£320', location: 'M6 Services', time: '2 hrs ago' },
+  { id: 'TF-8899', vehicle: 'Iveco Stralis', issue: 'Battery dead', status: 'accepted', quote: '£180', location: 'Birmingham', time: '4 hrs ago', assignedTo: null },
+  { id: 'TF-8897', vehicle: 'Renault T-High', issue: 'Suspension fault', status: 'rejected', quote: '£540', location: 'Manchester', time: '1 day ago' },
+];
+
+const JOBS = [
+  { id: 'TF-8821', vehicle: 'DAF XF', issue: 'Engine warning light', status: 'unassigned', urgency: 'high', location: 'M1 Services', time: '12 min ago', price: '£450' },
+  { id: 'TF-8822', vehicle: 'Scania R450', issue: 'Brake system fault', status: 'assigned', mechanic: 'John Smith', urgency: 'urgent', location: 'Birmingham', time: '25 min ago', price: '£680' },
+  { id: 'TF-8823', vehicle: 'Volvo FH16', issue: 'Coolant leak', status: 'assigned', mechanic: 'Mike Johnson', urgency: 'medium', location: 'Manchester', time: '1 hr ago', price: '£320' },
+  { id: 'TF-8824', vehicle: 'Mercedes Actros', issue: 'Electrical fault', status: 'in-progress', mechanic: 'Dave Wilson', urgency: 'low', location: 'Leeds', time: '2 hrs ago', price: '£540' },
+];
+
+// Jobs completed by mechanics pending company confirmation
+const PENDING_REVIEW_JOBS = [
+  { 
+    id: 'TF-8820', 
+    vehicle: 'MAN TGX', 
+    issue: 'Hydraulic system fault', 
+    status: 'pending-review', 
+    mechanic: 'John Smith', 
+    urgency: 'high', 
+    location: 'M6 Services', 
+    completedAt: '2 hrs ago',
+    fleet: 'Peak Haulage Ltd',
+    invoice: {
+      callOut: 85,
+      labourHours: 2.5,
+      hourlyRate: 65,
+      partsCost: 145,
+      parts: [
+        { name: 'Hydraulic pump seal kit', cost: 95 },
+        { name: 'Hydraulic fluid (10L)', cost: 50 }
+      ],
+      totalGross: 397.50
+    }
+  },
+  { 
+    id: 'TF-8819', 
+    vehicle: 'Iveco Stralis', 
+    issue: 'Battery replacement', 
+    status: 'pending-review', 
+    mechanic: 'Mike Johnson', 
+    urgency: 'medium', 
+    location: 'Birmingham Depot', 
+    completedAt: '4 hrs ago',
+    fleet: 'Swift Freight',
+    invoice: {
+      callOut: 85,
+      labourHours: 0.75,
+      hourlyRate: 65,
+      partsCost: 95,
+      parts: [
+        { name: 'Heavy-duty battery 12V', cost: 95 }
+      ],
+      totalGross: 228.75
+    }
+  },
+];
+
+// ─── Job Feed (Browse & Quote) ───────────────────────────────────────────────
+function CompanyJobFeed() {
+  const [activeTab, setActiveTab] = useState<'available' | 'my-quotes'>('available');
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<any>(null);
 
   return (
-    <div className="absolute inset-0 bg-black/85 z-50 flex flex-col justify-end" onClick={onClose}>
-      <div className="bg-[#0e0e0e] rounded-t-3xl border-t border-[#2a2a2a] flex flex-col max-h-[90%]" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-          <div className="w-10 h-1 bg-[#333] rounded-full" />
-        </div>
-        <div className="px-5 pt-2 pb-3.5 border-b border-[#1a1a1a] flex-shrink-0">
-          <div className="flex items-start justify-between">
-            <div className="flex-1 min-w-0 pr-3">
-              <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                <span className="text-gray-500 text-[10px] font-mono">{job.id}</span>
-                <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full border ${job.urgencyBg} ${job.urgencyColor}`}>{job.urgency}</span>
-                <span className={`flex items-center gap-1 text-[9px] font-black uppercase tracking-wide ${job.statusColor}`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${job.statusBg} ${isPosted ? 'animate-pulse' : ''}`} />
-                  {job.status}
-                </span>
-              </div>
-              <p className="text-white font-black text-[15px] tracking-tight">{job.truck}</p>
-              <p className="text-gray-400 text-[11px] mt-0.5">{job.issue}</p>
-            </div>
-            <button onClick={onClose} className="w-8 h-8 bg-[#1a1a1a] rounded-xl flex items-center justify-center flex-shrink-0">
-              <X className="w-3.5 h-3.5 text-gray-500" />
-            </button>
+    <div className="h-full bg-black overflow-y-auto pb-20 relative">
+      {/* Header */}
+      <div className="bg-[#0f0f0f] border-b border-[#2a2a2a] px-4 py-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h1 className="text-white font-black text-xl tracking-tight">Job Feed</h1>
+            <p className="text-gray-500 text-xs mt-0.5">Browse & send quotes</p>
+          </div>
+          <div className="bg-yellow-400/10 border border-yellow-400/30 px-3 py-1.5 rounded-lg">
+            <span className="text-yellow-400 font-black text-sm">{AVAILABLE_JOBS.length}</span>
+            <span className="text-yellow-400/80 text-xs ml-1">new</span>
           </div>
         </div>
-        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3" style={{ scrollbarWidth: 'none' }}>
-          {isPosted && !accepted && (
-            <>
-              <div className="flex items-center justify-between">
-                <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Quotes Received</p>
-                <span className="text-gray-500 text-[10px]">{POSTED_QUOTES.length} mechanics responded</span>
-              </div>
-              {POSTED_QUOTES.map((q, i) => {
-                const isExpanded = expandedQuote === q.id;
-                const isBest = i === 0;
-                return (
-                  <div key={q.id} className={`bg-[#111] rounded-xl border overflow-hidden ${isBest ? 'border-yellow-400/30' : 'border-[#1e1e1e]'}`}>
-                    {isBest && (
-                      <div className="bg-yellow-400/10 px-3 py-1 border-b border-yellow-400/20 flex items-center gap-1.5">
-                        <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                        <span className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Fastest &amp; Highest Rated</span>
-                      </div>
-                    )}
-                    <div className="p-3.5">
-                      <div className="flex items-center gap-3 mb-3">
-                        <img src={q.img} alt={q.name} className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-[#2a2a2a]" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <p className="text-white font-black text-[13px]">{q.name}</p>
-                            {q.verified && <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-green-400/15 text-green-400 border border-green-400/30">VERIFIED</span>}
-                          </div>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                            <span className="text-yellow-400 text-[11px] font-semibold">{q.rating}</span>
-                            <span className="text-gray-500 text-[10px]">· {q.jobs} jobs · {q.speciality}</span>
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-yellow-400 font-black text-[16px]">{q.total}</p>
-                          <p className="text-gray-500 text-[10px]">{q.responded}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="flex items-center gap-1.5 bg-[#0f0f0f] rounded-lg px-2.5 py-1.5 border border-[#1e1e1e]">
-                          <Navigation className="w-3 h-3 text-orange-400" />
-                          <span className="text-orange-400 text-[11px] font-black">ETA {q.eta}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 bg-[#0f0f0f] rounded-lg px-2.5 py-1.5 border border-[#1e1e1e]">
-                          <MapPin className="w-3 h-3 text-gray-500" />
-                          <span className="text-gray-400 text-[11px] font-semibold">{q.distance} away</span>
-                        </div>
-                      </div>
-                      {isExpanded && (
-                        <div className="bg-[#0d0d0d] rounded-xl border border-[#1e1e1e] p-3 mb-3">
-                          <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-2">Quote Breakdown</p>
-                          {[{ label:'Labour', val:q.labour },{ label:'Call-out Fee', val:q.callout },{ label:'Parts (est.)', val:q.parts }].map(row => (
-                            <div key={row.label} className="flex justify-between mb-1.5 last:mb-0">
-                              <span className="text-gray-400 text-[11px]">{row.label}</span>
-                              <span className="text-white text-[11px] font-semibold">{row.val}</span>
-                            </div>
-                          ))}
-                          <div className="flex justify-between border-t border-[#2a2a2a] pt-1.5 mt-1.5">
-                            <span className="text-white text-[12px] font-black">Total</span>
-                            <span className="text-yellow-400 text-[13px] font-black">{q.total}</span>
-                          </div>
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <button onClick={() => setAccepted(q.id)} className="flex-1 bg-yellow-400 text-black py-2.5 rounded-lg font-black text-[12px] tracking-widest uppercase flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform">
-                          <CheckCircle className="w-3.5 h-3.5" /> Accept · {q.total}
-                        </button>
-                        <button onClick={() => setExpandedQuote(isExpanded ? null : q.id)} className="bg-[#1a1a1a] border border-[#2a2a2a] px-3.5 rounded-lg flex items-center justify-center">
-                          {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          )}
-          {isPosted && accepted && (
-            <div className="text-center py-8">
-              <div className="w-16 h-16 bg-green-400/15 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-green-400/30">
-                <CheckCircle className="w-8 h-8 text-green-400" />
-              </div>
-              <p className="text-white font-black text-[16px] mb-1.5">Quote Accepted!</p>
-              <p className="text-gray-400 text-[12px] leading-relaxed">The mechanic has been notified. We'll notify you when they start their journey.</p>
-            </div>
-          )}
-          {!isPosted && (
-            <>
-              <MapPreview height={140} showRoute={job.status === 'EN ROUTE'} />
-              <div className="bg-[#111] rounded-xl border border-[#1e1e1e] p-3.5">
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-3">Status</p>
-                {[
-                  { label:'Job Posted',        done:true,  highlight:false },
-                  { label:'Mechanic Assigned', done:true,  highlight:false },
-                  { label:'En Route',          done:true,  highlight:job.status==='EN ROUTE' },
-                  { label:'On Site',           done:job.status==='ON SITE', highlight:job.status==='ON SITE' },
-                  { label:'Completed',         done:false, highlight:false },
-                ].map((step, idx) => (
-                  <div key={step.label} className="flex items-center gap-3 mb-2 last:mb-0">
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${step.done ? (step.highlight ? 'bg-yellow-400' : 'bg-green-500') : 'bg-[#1a1a1a] border border-[#2a2a2a]'}`}>
-                      {step.done ? <Check className="w-3 h-3 text-black" strokeWidth={3} /> : <div className="w-1.5 h-1.5 rounded-full bg-[#333]" />}
-                    </div>
-                    <span className={`text-[12px] font-semibold flex-1 ${step.done ? 'text-white' : 'text-gray-600'}`}>{step.label}</span>
-                    {idx === 2 && job.status === 'EN ROUTE' && job.eta && (
-                      <span className="text-orange-400 text-[10px] font-black">ETA {job.eta}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="bg-[#111] rounded-xl border border-[#1e1e1e] p-3.5 flex items-center gap-3">
-                <img src={MECHANIC_IMG} alt="Mechanic" className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-[#2a2a2a]" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <p className="text-white font-black text-[13px]">{job.mechanic}</p>
-                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-green-400/15 text-green-400 border border-green-400/30">VERIFIED</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                    <span className="text-yellow-400 text-[11px] font-semibold">4.9</span>
-                    <span className="text-gray-500 text-[11px]">· 184 jobs</span>
-                  </div>
-                </div>
-                <a href="tel:+447734567890" className="w-10 h-10 bg-yellow-400/10 border border-yellow-400/30 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <Phone className="w-4 h-4 text-yellow-400" />
-                </a>
-              </div>
-            </>
-          )}
-        </div>
-        <div className="px-5 pb-5 pt-3 border-t border-[#1a1a1a] flex-shrink-0">
-          {!isPosted && (
-            <div className="flex gap-2 mb-2">
-              <button
-                onClick={() => { onOpenChat?.(); onClose(); }}
-                className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] text-white py-3 rounded-xl font-semibold text-[12px] tracking-wide flex items-center justify-center gap-2 active:scale-95 transition-transform"
-              >
-                <MessageCircle className="w-4 h-4 text-yellow-400" />
-                Chat with Mechanic
-              </button>
-              <button
-                onClick={() => { onCancel?.(); onClose(); }}
-                className="flex-1 bg-red-500/10 border border-red-500/30 text-red-400 py-3 rounded-xl font-semibold text-[12px] tracking-wide active:scale-95 transition-transform"
-              >
-                Cancel Job
-              </button>
-            </div>
-          )}
-          <button onClick={onClose} className="w-full border border-[#2a2a2a] text-gray-500 py-3 rounded-xl font-semibold text-[12px] tracking-wide">
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-// ─── Invoice Modal ────────────────────────────────────────────────────────────
-// ─── Job Completion Approval & Review ────────────────���───────────────────────
-function CompletionReviewSheet({ job, onClose, onComplete }: { job: any; onClose: () => void; onComplete: () => void }) {
-  const [showApproval, setShowApproval] = useState(true);
-  const [showReview, setShowReview] = useState(false);
-  const [rating, setRating] = useState(0);
-  const [reviewText, setReviewText] = useState('');
-  const [reviewSubmitted, setReviewSubmitted] = useState(false);
-
-  const handleApprove = () => {
-    setShowApproval(false);
-    setShowReview(true);
-  };
-
-  const handleSubmitReview = () => {
-    if (rating > 0) {
-      setReviewSubmitted(true);
-      setTimeout(() => {
-        onComplete();
-        onClose();
-      }, 1500);
-    }
-  };
-
-  if (showApproval) {
-    return (
-      <div className="absolute inset-0 bg-black/90 z-50 flex flex-col justify-end" onClick={onClose}>
-        <div className="bg-[#0e0e0e] rounded-t-3xl border-t border-[#2a2a2a] p-6 flex flex-col" onClick={e => e.stopPropagation()}>
-          <div className="w-10 h-1 bg-[#333] rounded-full mx-auto mb-5" />
-          <div className="w-16 h-16 bg-green-400/15 rounded-2xl flex items-center justify-center mb-4 border border-green-400/30 mx-auto">
-            <CheckCircle className="w-8 h-8 text-green-400" />
-          </div>
-          <p className="text-white font-black text-[18px] tracking-tight text-center mb-2">Job Completed</p>
-          <p className="text-gray-400 text-[13px] text-center mb-6 px-4">
-            {job.mechanic} has marked this job as complete. Review the work and approve to release payment.
-          </p>
-
-          {/* Job Summary */}
-          <div className="bg-[#111] rounded-xl border border-[#1e1e1e] p-4 mb-5">
-            <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Job Summary</p>
-            <div className="space-y-2.5">
-              {[
-                { label: 'Vehicle', value: job.truck },
-                { label: 'Mechanic', value: job.mechanic },
-                { label: 'Total Cost', value: job.total || job.pay }
-              ].map(({ label, value }) => (
-                <div key={label} className="flex justify-between">
-                  <span className="text-gray-500 text-[12px]">{label}</span>
-                  <span className="text-white text-[12px] font-semibold">{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Payment Release Notice */}
-          <div className="bg-yellow-400/10 border border-yellow-400/30 rounded-xl p-3 flex gap-2 mb-5">
-            <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
-            <p className="text-yellow-400 text-[11px] leading-relaxed">
-              Funds will be released to the mechanic within 24 hours of approval
-            </p>
-          </div>
-
-          {/* Approve Button */}
+        {/* Tabs */}
+        <div className="flex gap-2">
           <button
-            onClick={handleApprove}
-            className="w-full bg-green-400 text-black py-4 rounded-xl font-black text-sm tracking-widest uppercase"
+            onClick={() => setActiveTab('available')}
+            className={`flex-1 py-2 rounded-lg text-xs font-bold ${
+              activeTab === 'available'
+                ? 'bg-yellow-400 text-black'
+                : 'bg-[#1a1a1a] text-gray-500 border border-[#2a2a2a]'
+            }`}
           >
-            Approve & Continue
+            Available Jobs ({AVAILABLE_JOBS.length})
           </button>
-          <button onClick={onClose} className="w-full py-3 text-gray-600 text-[12px] font-semibold mt-2">
-            Review Later
+          <button
+            onClick={() => setActiveTab('my-quotes')}
+            className={`flex-1 py-2 rounded-lg text-xs font-bold ${
+              activeTab === 'my-quotes'
+                ? 'bg-yellow-400 text-black'
+                : 'bg-[#1a1a1a] text-gray-500 border border-[#2a2a2a]'
+            }`}
+          >
+            My Quotes ({MY_QUOTES.length})
           </button>
         </div>
       </div>
-    );
-  }
 
-  if (showReview) {
-    return (
-      <div className="absolute inset-0 bg-black/90 z-50 flex flex-col justify-end" onClick={onClose}>
-        <div className="bg-[#0e0e0e] rounded-t-3xl border-t border-[#2a2a2a] p-6 flex flex-col" onClick={e => e.stopPropagation()}>
-          {reviewSubmitted ? (
-            <div className="flex flex-col items-center text-center py-6">
-              <div className="w-16 h-16 bg-green-400/15 rounded-2xl flex items-center justify-center mb-4 border border-green-400/30">
-                <CheckCircle className="w-8 h-8 text-green-400" />
+      <div className="p-4 space-y-3">
+        {activeTab === 'available' ? (
+          // Available Jobs
+          <>
+            {AVAILABLE_JOBS.map((job) => (
+              <div key={job.id} className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-gray-600 text-xs font-mono">{job.id}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                        job.urgency === 'urgent' ? 'bg-red-400/10 text-red-400 border border-red-400/30' :
+                        job.urgency === 'high' ? 'bg-orange-400/10 text-orange-400 border border-orange-400/30' :
+                        'bg-blue-400/10 text-blue-400 border border-blue-400/30'
+                      }`}>
+                        {job.urgency.toUpperCase()}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                        <span className="text-yellow-400 text-xs font-semibold">{job.fleetRating}</span>
+                      </div>
+                    </div>
+                    <h3 className="text-white font-bold text-sm mb-1">{job.vehicle}</h3>
+                    <p className="text-gray-500 text-xs">{job.issue}</p>
+                  </div>
+                  <span className="text-gray-600 text-xs">{job.time}</span>
+                </div>
+
+                <div className="flex items-center gap-3 mb-3 text-xs">
+                  <div className="flex items-center gap-1 text-gray-600">
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>{job.location}</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-green-400">
+                    <Target className="w-3.5 h-3.5" />
+                    <span>{job.distance}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setSelectedJob(job);
+                    setShowQuoteModal(true);
+                  }}
+                  className="w-full bg-yellow-400 text-black py-2.5 rounded-lg font-black text-sm"
+                >
+                  Send Quote
+                </button>
               </div>
-              <p className="text-white font-black text-lg mb-1">Review Submitted!</p>
-              <p className="text-gray-400 text-[12px]">Payment will be released within 24 hours</p>
+            ))}
+          </>
+        ) : (
+          // My Quotes
+          <>
+            {MY_QUOTES.map((quote) => (
+              <div key={quote.id} className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-gray-600 text-xs font-mono">{quote.id}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                        quote.status === 'accepted' ? 'bg-green-400/10 text-green-400 border border-green-400/30' :
+                        quote.status === 'pending' ? 'bg-yellow-400/10 text-yellow-400 border border-yellow-400/30' :
+                        'bg-red-400/10 text-red-400 border border-red-400/30'
+                      }`}>
+                        {quote.status.toUpperCase()}
+                      </span>
+                    </div>
+                    <h3 className="text-white font-bold text-sm mb-1">{quote.vehicle}</h3>
+                    <p className="text-gray-500 text-xs">{quote.issue}</p>
+                  </div>
+                  <p className="text-green-400 font-black text-lg">{quote.quote}</p>
+                </div>
+
+                <div className="flex items-center gap-3 mb-3 text-xs">
+                  <div className="flex items-center gap-1 text-gray-600">
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>{quote.location}</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-gray-600">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{quote.time}</span>
+                  </div>
+                </div>
+
+                {quote.status === 'accepted' && (
+                  <div className="bg-green-400/10 border border-green-400/30 rounded-lg p-3 flex items-center justify-between">
+                    <span className="text-green-400 text-xs font-semibold">✓ Quote accepted - Assign mechanic</span>
+                    <button className="text-yellow-400 text-xs font-black">Assign</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Quote Submission Modal */}
+      {showQuoteModal && selectedJob && (
+        <div className="absolute inset-0 bg-black/80 flex items-end z-50">
+          <div className="w-full bg-[#0f0f0f] rounded-t-2xl border-t border-[#2a2a2a]">
+            <div className="px-4 py-4 border-b border-[#2a2a2a] flex items-center justify-between">
+              <div>
+                <h2 className="text-white font-black text-lg">Submit Quote</h2>
+                <p className="text-gray-600 text-xs">{selectedJob.id} · {selectedJob.vehicle}</p>
+              </div>
+              <button onClick={() => setShowQuoteModal(false)}>
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
             </div>
-          ) : (
-            <>
-              <div className="w-10 h-1 bg-[#333] rounded-full mx-auto mb-5" />
-              <p className="text-white font-black text-[17px] tracking-tight text-center mb-2">Rate Mechanic</p>
-              <p className="text-gray-500 text-[12px] text-center mb-5">How was your experience with {job.mechanic}?</p>
-              
-              {/* Star Rating */}
-              <div className="flex justify-center gap-3 mb-6">
-                {[1, 2, 3, 4, 5].map(star => (
-                  <button
-                    key={star}
-                    onClick={() => setRating(star)}
-                    className="transition-transform active:scale-95"
-                  >
-                    <Star
-                      className={`w-10 h-10 ${star <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-700'}`}
-                    />
-                  </button>
-                ))}
+
+            <div className="p-4 space-y-4">
+              {/* Job Details */}
+              <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4">
+                <h3 className="text-white font-bold text-sm mb-2">{selectedJob.issue}</h3>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>{selectedJob.location} ({selectedJob.distance})</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Posted {selectedJob.time}</span>
+                  </div>
+                </div>
               </div>
 
-              {/* Feedback Text */}
-              <div className="space-y-2 mb-5">
-                <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Feedback (Optional)</label>
-                <textarea
-                  value={reviewText}
-                  onChange={e => setReviewText(e.target.value)}
-                  placeholder="Share your experience with this mechanic..."
-                  rows={3}
-                  className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/40 text-[12px] resize-none"
+              {/* Quote Amount */}
+              <div>
+                <label className="text-gray-500 text-xs font-semibold mb-2 block">Quote Amount</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white text-xl font-black">£</span>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg pl-10 pr-4 py-4 text-white text-2xl font-black placeholder-gray-600 focus:outline-none focus:border-yellow-400/40"
+                  />
+                </div>
+              </div>
+
+              {/* Estimated Time */}
+              <div>
+                <label className="text-gray-500 text-xs font-semibold mb-2 block">Estimated Arrival (minutes)</label>
+                <input
+                  type="number"
+                  placeholder="30"
+                  className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-yellow-400/40"
                 />
               </div>
 
-              {/* Submit Button */}
+              {/* Notes */}
+              <div>
+                <label className="text-gray-500 text-xs font-semibold mb-2 block">Additional Notes (Optional)</label>
+                <textarea
+                  rows={3}
+                  placeholder="Any additional information..."
+                  className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-yellow-400/40 resize-none"
+                />
+              </div>
+
+              <button 
+                onClick={() => setShowQuoteModal(false)}
+                className="w-full bg-yellow-400 text-black py-3.5 rounded-lg font-black text-sm"
+              >
+                Submit Quote
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Company Dashboard ────────────────────────────────────────────────────────
+function CompanyDashboard({ navigateToJobs, navigateToTeam }: { 
+  navigateToJobs: (filter?: string) => void;
+  navigateToTeam: () => void;
+}) {
+  return (
+    <div className="h-full bg-black overflow-y-auto pb-20">
+      {/* Header */}
+      <div className="bg-[#0f0f0f] border-b border-[#2a2a2a] px-4 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-white font-black text-xl tracking-tight">Swift Mechanics Ltd</h1>
+            <p className="text-gray-500 text-xs mt-0.5">Company Dashboard</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-400 rounded-full shadow-[0_0_6px_rgba(34,197,94,0.6)]" />
+            <span className="text-green-400 text-xs font-semibold">4 Active Mechanics</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-[#0f0f0f] border border-yellow-400/30 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Briefcase className="w-4 h-4 text-yellow-400" />
+              <span className="text-yellow-400 text-xs font-black uppercase tracking-wide">Active Jobs</span>
+            </div>
+            <p className="text-white font-black text-3xl">6</p>
+            <p className="text-gray-600 text-xs mt-1">2 unassigned</p>
+          </div>
+
+          <div className="bg-[#0f0f0f] border border-green-400/30 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Users className="w-4 h-4 text-green-400" />
+              <span className="text-green-400 text-xs font-black uppercase tracking-wide">Mechanics</span>
+            </div>
+            <p className="text-white font-black text-3xl">4</p>
+            <p className="text-gray-600 text-xs mt-1">3 online</p>
+          </div>
+
+          <div className="bg-[#0f0f0f] border border-blue-400/30 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <DollarSign className="w-4 h-4 text-blue-400" />
+              <span className="text-blue-400 text-xs font-black uppercase tracking-wide">This Month</span>
+            </div>
+            <p className="text-white font-black text-3xl">£18.4k</p>
+            <p className="text-green-400 text-xs mt-1">+12% vs last</p>
+          </div>
+
+          <div className="bg-[#0f0f0f] border border-orange-400/30 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Star className="w-4 h-4 text-orange-400" />
+              <span className="text-orange-400 text-xs font-black uppercase tracking-wide">Avg Rating</span>
+            </div>
+            <p className="text-white font-black text-3xl">4.8</p>
+            <p className="text-gray-600 text-xs mt-1">156 reviews</p>
+          </div>
+        </div>
+
+        {/* Unassigned Jobs Alert */}
+        <div className="bg-yellow-400/5 border border-yellow-400/30 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-yellow-400 font-bold text-sm mb-1">2 Jobs Need Assignment</p>
+              <p className="text-gray-500 text-xs mb-3">Assign mechanics to new job requests</p>
+              <button 
+                onClick={() => navigateToJobs('Unassigned')}
+                className="bg-yellow-400 text-black px-4 py-2 rounded-lg font-black text-xs"
+              >
+                Assign Now
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="space-y-2">
+          <p className="text-gray-600 text-xs font-black uppercase tracking-wide px-1">Quick Actions</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button 
+              onClick={navigateToTeam}
+              className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl p-3 text-left hover:border-yellow-400/40 transition-colors"
+            >
+              <Users className="w-5 h-5 text-yellow-400 mb-2" />
+              <p className="text-white text-sm font-semibold">Manage Team</p>
+              <p className="text-gray-600 text-xs">4 mechanics</p>
+            </button>
+            <button
+              onClick={navigateToTeam}
+              className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl p-3 text-left hover:border-yellow-400/40 transition-colors"
+            >
+              <UserPlus className="w-5 h-5 text-green-400 mb-2" />
+              <p className="text-white text-sm font-semibold">Add Mechanic</p>
+              <p className="text-gray-600 text-xs">Send invite</p>
+            </button>
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="space-y-2">
+          <p className="text-gray-600 text-xs font-black uppercase tracking-wide px-1">Recent Activity</p>
+          <div className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl divide-y divide-[#1a1a1a]">
+            {[
+              { action: 'Job completed', detail: 'TF-8820 by John Smith', time: '5 min ago', icon: CheckCircle, color: 'green' },
+              { action: 'New job assigned', detail: 'TF-8822 to Mike Johnson', time: '25 min ago', icon: Briefcase, color: 'yellow' },
+              { action: 'Mechanic online', detail: 'Dave Wilson started shift', time: '1 hr ago', icon: User, color: 'blue' },
+            ].map((item, idx) => {
+              const Icon = item.icon;
+              return (
+                <div key={idx} className="p-3 flex items-center gap-3">
+                  <Icon className={`w-4 h-4 text-${item.color}-400 flex-shrink-0`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium">{item.action}</p>
+                    <p className="text-gray-600 text-xs truncate">{item.detail}</p>
+                  </div>
+                  <span className="text-gray-700 text-xs flex-shrink-0">{item.time}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Jobs Management (Assign Mechanics) ──────────────────────────────────────
+function CompanyJobs({ initialFilter }: { initialFilter?: string }) {
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<any>(null);
+  const [selectedMechanic, setSelectedMechanic] = useState<string | null>(null);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [activeFilter, setActiveFilter] = useState(initialFilter || 'All');
+  
+  // Update filter when initialFilter prop changes
+  React.useEffect(() => {
+    if (initialFilter) {
+      setActiveFilter(initialFilter);
+    }
+  }, [initialFilter]);
+  
+  // Invoice editing state
+  const [editCallOut, setEditCallOut] = useState('85');
+  const [editLabourHours, setEditLabourHours] = useState('2.5');
+  const [editPartsCost, setEditPartsCost] = useState('145');
+  const [editPartsList, setEditPartsList] = useState<Array<{ name: string; cost: string }>>([]);
+
+  const handleConfirmAssignment = () => {
+    if (selectedMechanic) {
+      // In production: API call to assign mechanic
+      setShowAssignModal(false);
+      setSelectedMechanic(null);
+    }
+  };
+
+  const handleApproveJob = () => {
+    // In production: API call to approve and finalize job with edited values
+    setShowInvoiceModal(false);
+    setSelectedInvoice(null);
+  };
+  
+  // When opening invoice modal, initialize with current values
+  const handleOpenInvoice = (job: any) => {
+    setSelectedInvoice(job);
+    setEditCallOut(job.invoice.callOut.toString());
+    setEditLabourHours(job.invoice.labourHours.toString());
+    setEditPartsCost(job.invoice.partsCost.toString());
+    // Initialize parts list from job data
+    const parts = (job.invoice.parts || []).map((p: any) => ({
+      name: p.name,
+      cost: p.cost.toString()
+    }));
+    setEditPartsList(parts);
+    setShowInvoiceModal(true);
+  };
+  
+  // Calculate edited total
+  const labourRate = selectedInvoice?.invoice.hourlyRate || 65;
+  const totalCallOut = parseFloat(editCallOut) || 0;
+  const totalLabour = (parseFloat(editLabourHours) || 0) * labourRate;
+  const totalParts = editPartsList.reduce((sum, part) => sum + (parseFloat(part.cost) || 0), 0);
+  const editedTotal = totalCallOut + totalLabour + totalParts;
+  
+  // Parts list management functions
+  const addEditPart = () => {
+    setEditPartsList([...editPartsList, { name: '', cost: '' }]);
+  };
+
+  const removeEditPart = (index: number) => {
+    setEditPartsList(editPartsList.filter((_, i) => i !== index));
+  };
+
+  const updateEditPartName = (index: number, name: string) => {
+    const updated = [...editPartsList];
+    updated[index].name = name;
+    setEditPartsList(updated);
+  };
+
+  const updateEditPartCost = (index: number, cost: string) => {
+    const updated = [...editPartsList];
+    updated[index].cost = cost;
+    setEditPartsList(updated);
+  };
+
+  return (
+    <div className="h-full bg-black overflow-y-auto pb-20 relative">
+      {/* Header */}
+      <div className="bg-[#0f0f0f] border-b border-[#2a2a2a] px-4 py-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h1 className="text-white font-black text-xl tracking-tight">Job Management</h1>
+            <p className="text-gray-500 text-xs mt-0.5">Assign & track jobs</p>
+          </div>
+          <div className="bg-yellow-400/10 border border-yellow-400/30 px-3 py-1.5 rounded-lg">
+            <span className="text-yellow-400 font-black text-sm">{PENDING_REVIEW_JOBS.length}</span>
+            <span className="text-yellow-400/80 text-xs ml-1">pending</span>
+          </div>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          {['All', 'Pending Review', 'Unassigned', 'Assigned', 'In Progress'].map((filter) => (
+            <button
+              key={filter}
+              onClick={() => setActiveFilter(filter)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap relative ${
+                activeFilter === filter
+                  ? 'bg-yellow-400 text-black'
+                  : 'bg-[#1a1a1a] text-gray-500 border border-[#2a2a2a]'
+              }`}
+            >
+              {filter}
+              {filter === 'Pending Review' && PENDING_REVIEW_JOBS.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-[9px] font-black flex items-center justify-center">
+                  {PENDING_REVIEW_JOBS.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="p-4 space-y-3">
+        {/* Pending Review Jobs */}
+        {(activeFilter === 'All' || activeFilter === 'Pending Review') && PENDING_REVIEW_JOBS.map((job) => (
+          <div key={job.id} className="bg-[#0f0f0f] border border-yellow-400/30 rounded-xl p-4">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-gray-600 text-xs font-mono">{job.id}</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-yellow-400/10 text-yellow-400 border border-yellow-400/30">
+                    PENDING REVIEW
+                  </span>
+                </div>
+                <h3 className="text-white font-bold text-sm mb-1">{job.vehicle}</h3>
+                <p className="text-gray-500 text-xs">{job.issue}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 mb-3 text-xs">
+              <div className="flex items-center gap-1 text-gray-600">
+                <MapPin className="w-3.5 h-3.5" />
+                <span>{job.location}</span>
+              </div>
+              <div className="flex items-center gap-1 text-gray-600">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Completed {job.completedAt}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-green-400/20 rounded-full flex items-center justify-center">
+                  <User className="w-4 h-4 text-green-400" />
+                </div>
+                <div>
+                  <p className="text-white text-xs font-semibold">{job.mechanic}</p>
+                  <p className="text-gray-600 text-[10px]">Completed job</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-yellow-400 font-black text-lg">£{job.invoice.totalGross.toFixed(2)}</p>
+                <p className="text-gray-600 text-[10px]">Total invoice</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => handleOpenInvoice(job)}
+              className="w-full bg-yellow-400 text-black py-2.5 rounded-lg font-black text-sm flex items-center justify-center gap-2"
+            >
+              <Eye className="w-4 h-4" />
+              Review & Approve Invoice
+            </button>
+          </div>
+        ))}
+
+        {/* Regular Jobs */}
+        {JOBS.filter(job => {
+          if (activeFilter === 'All') return true;
+          if (activeFilter === 'Pending Review') return false;
+          if (activeFilter === 'Unassigned') return job.status === 'unassigned';
+          if (activeFilter === 'Assigned') return job.status === 'assigned';
+          if (activeFilter === 'In Progress') return job.status === 'in-progress';
+          return true;
+        }).map((job) => (
+          <div key={job.id} className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl p-4">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-gray-600 text-xs font-mono">{job.id}</span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                    job.urgency === 'urgent' ? 'bg-red-400/10 text-red-400 border border-red-400/30' :
+                    job.urgency === 'high' ? 'bg-orange-400/10 text-orange-400 border border-orange-400/30' :
+                    'bg-blue-400/10 text-blue-400 border border-blue-400/30'
+                  }`}>
+                    {job.urgency.toUpperCase()}
+                  </span>
+                </div>
+                <h3 className="text-white font-bold text-sm mb-1">{job.vehicle}</h3>
+                <p className="text-gray-500 text-xs">{job.issue}</p>
+              </div>
+              <p className="text-green-400 font-black text-lg">{job.price}</p>
+            </div>
+
+            <div className="flex items-center gap-3 mb-3 text-xs">
+              <div className="flex items-center gap-1 text-gray-600">
+                <MapPin className="w-3.5 h-3.5" />
+                <span>{job.location}</span>
+              </div>
+              <div className="flex items-center gap-1 text-gray-600">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{job.time}</span>
+              </div>
+            </div>
+
+            {/* Assignment Status */}
+            {job.status === 'unassigned' ? (
               <button
-                onClick={handleSubmitReview}
-                disabled={rating === 0}
-                className={`w-full py-4 rounded-xl font-black text-sm tracking-widest uppercase transition-opacity ${
-                  rating > 0 ? 'bg-yellow-400 text-black' : 'bg-yellow-400/30 text-black/40 cursor-not-allowed'
+                onClick={() => {
+                  setSelectedJob(job);
+                  setShowAssignModal(true);
+                }}
+                className="w-full bg-yellow-400 text-black py-2.5 rounded-lg font-black text-sm flex items-center justify-center gap-2"
+              >
+                <UserPlus className="w-4 h-4" />
+                Assign Mechanic
+              </button>
+            ) : (
+              <div className="flex items-center justify-between bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-green-400/20 rounded-full flex items-center justify-center">
+                    <User className="w-4 h-4 text-green-400" />
+                  </div>
+                  <div>
+                    <p className="text-white text-xs font-semibold">{job.mechanic}</p>
+                    <p className="text-gray-600 text-[10px]">{job.status.replace('-', ' ')}</p>
+                  </div>
+                </div>
+                <button className="text-yellow-400 text-xs font-bold">Reassign</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Assign Mechanic Modal */}
+      {showAssignModal && (
+        <div className="absolute inset-0 bg-black/80 flex items-end z-50">
+          <div className="w-full bg-[#0f0f0f] rounded-t-2xl border-t border-[#2a2a2a] max-h-[80vh] flex flex-col">
+            <div className="flex-shrink-0 bg-[#0f0f0f] border-b border-[#2a2a2a] px-4 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-white font-black text-lg">Assign Mechanic</h2>
+                <p className="text-gray-600 text-xs">{selectedJob?.id} · {selectedJob?.vehicle}</p>
+              </div>
+              <button onClick={() => {
+                setShowAssignModal(false);
+                setSelectedMechanic(null);
+              }}>
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ scrollbarWidth: 'none' }}>
+              {MECHANICS.map((mechanic) => {
+                const isSelected = selectedMechanic === mechanic.id;
+                return (
+                  <button
+                    key={mechanic.id}
+                    onClick={() => setSelectedMechanic(mechanic.id)}
+                    className={`w-full rounded-xl p-4 text-left transition-all ${
+                      isSelected 
+                        ? 'bg-[#1a1a1a] border-2 border-yellow-400' 
+                        : 'bg-[#1a1a1a] border border-[#2a2a2a] hover:border-yellow-400/40'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          isSelected ? 'bg-yellow-400/30' : 'bg-yellow-400/20'
+                        }`}>
+                          <User className={`w-5 h-5 ${isSelected ? 'text-yellow-400' : 'text-yellow-400'}`} />
+                        </div>
+                        <div>
+                          <p className="text-white font-bold text-sm">{mechanic.name}</p>
+                          <p className="text-gray-600 text-xs">{mechanic.id}</p>
+                        </div>
+                      </div>
+                      <div className={`w-2 h-2 rounded-full ${
+                        mechanic.status === 'active' ? 'bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.6)]' :
+                        mechanic.status === 'busy' ? 'bg-orange-400' : 'bg-gray-600'
+                      }`} />
+                    </div>
+
+                    <div className="flex items-center gap-4 text-xs">
+                      <div className="flex items-center gap-1">
+                        <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
+                        <span className="text-yellow-400 font-semibold">{mechanic.rating}</span>
+                      </div>
+                      <span className="text-gray-600">
+                        {mechanic.activeJobs} active · {mechanic.completed} completed
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex-shrink-0 bg-[#0f0f0f] border-t border-[#2a2a2a] p-4">
+              <button 
+                onClick={handleConfirmAssignment}
+                disabled={!selectedMechanic}
+                className={`w-full py-3 rounded-lg font-black transition-opacity ${
+                  selectedMechanic 
+                    ? 'bg-yellow-400 text-black' 
+                    : 'bg-yellow-400/30 text-black/40 cursor-not-allowed'
                 }`}
               >
-                Submit Review
+                Confirm Assignment
               </button>
-              <button onClick={onClose} className="w-full py-3 text-gray-600 text-[12px] font-semibold mt-2">
-                Skip for now
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Review Modal */}
+      {showInvoiceModal && selectedInvoice && (
+        <div className="absolute inset-0 bg-black/80 flex items-end z-50">
+          <div className="w-full bg-[#0f0f0f] rounded-t-2xl border-t border-[#2a2a2a] max-h-[80vh] flex flex-col">
+            <div className="flex-shrink-0 bg-[#0f0f0f] border-b border-[#2a2a2a] px-4 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-white font-black text-lg">Review Invoice</h2>
+                <p className="text-gray-600 text-xs">{selectedInvoice.id} · {selectedInvoice.vehicle}</p>
+              </div>
+              <button onClick={() => setShowInvoiceModal(false)}>
+                <X className="w-5 h-5 text-gray-600" />
               </button>
-            </>
-          )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+              {/* Job Details */}
+              <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4">
+                <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Job Details</p>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-xs">Issue</span>
+                    <span className="text-white text-xs font-semibold">{selectedInvoice.issue}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-xs">Location</span>
+                    <span className="text-white text-xs font-semibold">{selectedInvoice.location}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-xs">Mechanic</span>
+                    <span className="text-white text-xs font-semibold">{selectedInvoice.mechanic}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-xs">Fleet Operator</span>
+                    <span className="text-white text-xs font-semibold">{selectedInvoice.fleet}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-xs">Completed</span>
+                    <span className="text-white text-xs font-semibold">{selectedInvoice.completedAt}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Invoice Breakdown */}
+              <div className="bg-[#1a1a1a] border border-yellow-400/40 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText className="w-4 h-4 text-yellow-400" />
+                  <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Job Invoice</p>
+                </div>
+                
+                <div className="space-y-3">
+                  {/* Call Out Charge - Editable */}
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Call Out Charge</label>
+                    <div className="relative mt-1">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">£</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editCallOut}
+                        onChange={e => setEditCallOut(e.target.value)}
+                        className="w-full bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl pl-8 pr-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Labour Time - Editable */}
+                  <div>
+                    <label className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Labour Time (Hours)</label>
+                    <div className="mt-1 flex gap-2">
+                      <input
+                        type="number"
+                        step="0.25"
+                        value={editLabourHours}
+                        onChange={e => setEditLabourHours(e.target.value)}
+                        className="flex-1 bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm"
+                      />
+                      <div className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl px-4 py-3 flex items-center whitespace-nowrap">
+                        <p className="text-gray-500 text-sm">@ £{labourRate}/hr</p>
+                      </div>
+                    </div>
+                    <p className="text-gray-500 text-xs mt-1.5">Labour total: £{totalLabour.toFixed(2)}</p>
+                  </div>
+
+                  {/* Parts - Editable */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Parts Used</label>
+                      <button
+                        onClick={addEditPart}
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-[#0f0f0f] border border-[#2a2a2a] hover:border-yellow-400/40 rounded-lg transition-colors"
+                      >
+                        <Plus className="w-3 h-3 text-yellow-400" />
+                        <span className="text-[10px] text-gray-400 font-semibold">Add Part</span>
+                      </button>
+                    </div>
+                    
+                    {editPartsList.length === 0 ? (
+                      <div className="bg-[#080808] border border-[#1a1a1a] rounded-xl p-4 text-center">
+                        <p className="text-gray-600 text-xs">No parts added</p>
+                        <p className="text-gray-700 text-[10px] mt-0.5">Click "Add Part" to itemize parts costs</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {editPartsList.map((part, index) => (
+                          <div key={index} className="bg-[#080808] border border-[#1a1a1a] rounded-xl p-3 space-y-2">
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={part.name}
+                                onChange={e => updateEditPartName(index, e.target.value)}
+                                placeholder="Part name (e.g., Hydraulic seal)"
+                                className="flex-1 bg-[#0f0f0f] border border-[#2a2a2a] rounded-lg px-3 py-2 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-xs"
+                              />
+                              <button
+                                onClick={() => removeEditPart(index)}
+                                className="w-8 h-8 bg-[#0f0f0f] border border-[#2a2a2a] hover:border-red-400/40 rounded-lg flex items-center justify-center transition-colors group flex-shrink-0"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-gray-600 group-hover:text-red-400 transition-colors" />
+                              </button>
+                            </div>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">£</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={part.cost}
+                                onChange={e => updateEditPartCost(index, e.target.value)}
+                                placeholder="0.00"
+                                className="w-full bg-[#0f0f0f] border border-[#2a2a2a] rounded-lg pl-7 pr-3 py-2 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-xs"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {editPartsList.length > 0 && (
+                      <p className="text-gray-500 text-xs">Parts total: £{totalParts.toFixed(2)}</p>
+                    )}
+                  </div>
+
+                  {/* Total - Dynamically Calculated */}
+                  <div className="border-t border-[#2a2a2a] pt-3 mt-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400 text-sm font-semibold">Total Invoice</span>
+                      <span className="text-yellow-400 font-black text-2xl">£{editedTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-blue-400/10 border border-blue-400/30 rounded-xl p-3 flex gap-3">
+                <HelpCircle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-blue-400 text-xs font-bold mb-1">Company Review</p>
+                  <p className="text-gray-400 text-xs">Review and approve this invoice to finalize the job. The amount will be charged to the fleet operator.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-shrink-0 bg-[#0f0f0f] border-t border-[#2a2a2a] p-4 space-y-2">
+              <button 
+                onClick={handleApproveJob}
+                className="w-full bg-green-400 text-black py-3 rounded-lg font-black transition-opacity"
+              >
+                ✓ Approve & Complete Job
+              </button>
+              <button 
+                onClick={() => setShowInvoiceModal(false)}
+                className="w-full bg-[#1a1a1a] border border-[#2a2a2a] text-white py-3 rounded-lg font-bold"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Team Management (Standalone Screen) ──────────────────────────────────────
+function CompanyTeam() {
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [selectedMechanic, setSelectedMechanic] = useState<any>(null);
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+
+  const handleRemoveMechanic = () => {
+    // In production: API call to remove mechanic from team
+    setShowRemoveConfirm(false);
+    setSelectedMechanic(null);
+  };
+
+  return (
+    <div className="h-full bg-black overflow-y-auto pb-20 relative">
+      {/* Header */}
+      <div className="bg-[#0f0f0f] border-b border-[#2a2a2a] px-4 py-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h1 className="text-white font-black text-xl tracking-tight">Team Management</h1>
+            <p className="text-gray-500 text-xs mt-0.5">Manage your mechanics</p>
+          </div>
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="bg-yellow-400 text-black px-3 py-2 rounded-lg font-black text-xs flex items-center gap-1.5"
+          >
+            <UserPlus className="w-4 h-4" />
+            Invite
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-3">
+        {MECHANICS.map((mechanic) => (
+          <div key={mechanic.id} className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl p-4">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-yellow-400/20 rounded-full flex items-center justify-center">
+                  <User className="w-6 h-6 text-yellow-400" />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold text-sm">{mechanic.name}</h3>
+                  <p className="text-gray-600 text-xs">{mechanic.id}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${
+                  mechanic.status === 'active' ? 'bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.6)]' :
+                  mechanic.status === 'busy' ? 'bg-orange-400' : 'bg-gray-600'
+                }`} />
+                <span className={`text-xs font-semibold ${
+                  mechanic.status === 'active' ? 'text-green-400' :
+                  mechanic.status === 'busy' ? 'text-orange-400' : 'text-gray-600'
+                }`}>
+                  {mechanic.status}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-2 text-center">
+                <p className="text-yellow-400 font-black text-lg">{mechanic.rating}</p>
+                <p className="text-gray-600 text-[10px]">Rating</p>
+              </div>
+              <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-2 text-center">
+                <p className="text-orange-400 font-black text-lg">{mechanic.activeJobs}</p>
+                <p className="text-gray-600 text-[10px]">Active</p>
+              </div>
+              <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-2 text-center">
+                <p className="text-green-400 font-black text-lg">{mechanic.completed}</p>
+                <p className="text-gray-600 text-[10px]">Done</p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setSelectedMechanic(mechanic)}
+                className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] text-gray-600 py-2 rounded-lg text-xs font-bold hover:border-yellow-400/40 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <MoreVertical className="w-4 h-4" />
+                More
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Mechanic Details Sheet */}
+      {selectedMechanic && (
+        <div className="absolute inset-0 bg-black/90 flex items-end z-50" onClick={() => setSelectedMechanic(null)}>
+          <div className="w-full bg-[#0f0f0f] rounded-t-3xl border-t border-[#2a2a2a] max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* Handle */}
+            <div className="w-10 h-1 bg-[#333] rounded-full mx-auto mt-3 mb-4" />
+            
+            {/* Header */}
+            <div className="px-5 pb-4 border-b border-[#1a1a1a]">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-14 h-14 bg-yellow-400/20 rounded-full flex items-center justify-center">
+                  <User className="w-7 h-7 text-yellow-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-white font-black text-lg tracking-tight">{selectedMechanic.name}</h3>
+                  <p className="text-gray-600 text-xs mb-1">{selectedMechanic.id}</p>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      selectedMechanic.status === 'active' ? 'bg-green-400 shadow-[0_0_6px_rgba(34,197,94,0.6)]' :
+                      selectedMechanic.status === 'busy' ? 'bg-orange-400' : 'bg-gray-600'
+                    }`} />
+                    <span className={`text-xs font-semibold capitalize ${
+                      selectedMechanic.status === 'active' ? 'text-green-400' :
+                      selectedMechanic.status === 'busy' ? 'text-orange-400' : 'text-gray-600'
+                    }`}>
+                      {selectedMechanic.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+              {/* Performance Stats */}
+              <div>
+                <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Performance</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-[#111] border border-[#1a1a1a] rounded-xl p-3 text-center">
+                    <p className="text-yellow-400 font-black text-2xl mb-1">{selectedMechanic.rating}</p>
+                    <p className="text-gray-600 text-[10px] uppercase tracking-wide">Rating</p>
+                  </div>
+                  <div className="bg-[#111] border border-[#1a1a1a] rounded-xl p-3 text-center">
+                    <p className="text-orange-400 font-black text-2xl mb-1">{selectedMechanic.activeJobs}</p>
+                    <p className="text-gray-600 text-[10px] uppercase tracking-wide">Active</p>
+                  </div>
+                  <div className="bg-[#111] border border-[#1a1a1a] rounded-xl p-3 text-center">
+                    <p className="text-green-400 font-black text-2xl mb-1">{selectedMechanic.completed}</p>
+                    <p className="text-gray-600 text-[10px] uppercase tracking-wide">Done</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contact Info */}
+              <div>
+                <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Contact</p>
+                <div className="bg-[#111] border border-[#1a1a1a] rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Email</span>
+                    <span className="text-white text-xs font-semibold">{selectedMechanic.email}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Phone</span>
+                    <span className="text-white text-xs font-semibold">{selectedMechanic.phone}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">Joined</span>
+                    <span className="text-white text-xs font-semibold">{selectedMechanic.joinedDate}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Specialties */}
+              <div>
+                <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Specialties</p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedMechanic.specialties.map((specialty: string, idx: number) => (
+                    <span key={idx} className="px-3 py-1.5 bg-yellow-400/10 border border-yellow-400/30 rounded-lg text-yellow-400 text-xs font-semibold">
+                      {specialty}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <a 
+                  href={`tel:${selectedMechanic.phone}`}
+                  className="bg-yellow-400 text-black py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+                >
+                  <Phone className="w-4 h-4" />
+                  Call
+                </a>
+                <button className="bg-[#111] border border-[#2a2a2a] text-white py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2">
+                  <MessageCircle className="w-4 h-4" />
+                  Message
+                </button>
+              </div>
+
+              {/* Remove from Team */}
+              <button 
+                onClick={() => setShowRemoveConfirm(true)}
+                className="w-full bg-red-400/10 border border-red-400/30 text-red-400 py-3 rounded-xl font-black text-xs uppercase tracking-wider mb-4"
+              >
+                Remove from Team
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Confirmation Modal */}
+      {showRemoveConfirm && (
+        <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-[60] px-4">
+          <div className="w-full max-w-sm bg-[#0f0f0f] border border-red-400/30 rounded-2xl p-5">
+            <div className="w-12 h-12 bg-red-400/10 border border-red-400/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-6 h-6 text-red-400" />
+            </div>
+            <h3 className="text-white font-black text-lg text-center mb-2">Remove Mechanic?</h3>
+            <p className="text-gray-400 text-xs text-center mb-6">
+              Are you sure you want to remove <span className="text-white font-semibold">{selectedMechanic?.name}</span> from your team? This action cannot be undone.
+            </p>
+            <div className="space-y-2">
+              <button 
+                onClick={handleRemoveMechanic}
+                className="w-full bg-red-400 text-black py-3 rounded-xl font-black text-sm"
+              >
+                Yes, Remove
+              </button>
+              <button 
+                onClick={() => setShowRemoveConfirm(false)}
+                className="w-full bg-[#1a1a1a] border border-[#2a2a2a] text-white py-3 rounded-xl font-bold text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invite Modal */}
+      {showInviteModal && (
+        <div className="absolute inset-0 bg-black/80 flex items-end z-50">
+          <div className="w-full bg-[#0f0f0f] rounded-t-2xl border-t border-[#2a2a2a]">
+            <div className="px-4 py-4 border-b border-[#2a2a2a] flex items-center justify-between">
+              <h2 className="text-white font-black text-lg">Invite Mechanic</h2>
+              <button onClick={() => setShowInviteModal(false)}>
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="text-gray-500 text-xs font-semibold mb-2 block">Email Address</label>
+                <input
+                  type="email"
+                  placeholder="mechanic@example.com"
+                  className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-4 py-3 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-yellow-400/40"
+                />
+              </div>
+
+              <div>
+                <label className="text-gray-500 text-xs font-semibold mb-2 block">Full Name</label>
+                <input
+                  type="text"
+                  placeholder="John Smith"
+                  className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-4 py-3 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-yellow-400/40"
+                />
+              </div>
+
+              <button className="w-full bg-yellow-400 text-black py-3 rounded-lg font-black">
+                Send Invitation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Company Profile ──────────────────────────────────────────────────────────
+function CompanyProfile({ navigateToTeam, navigateToEditProfile, navigateToEarnings, onLogout }: { 
+  navigateToTeam: () => void;
+  navigateToEditProfile: () => void;
+  navigateToEarnings: () => void;
+  onLogout?: () => void;
+}) {
+  const [showHelpModal, setShowHelpModal] = useState(false);
+
+  return (
+    <>
+      {showHelpModal && <HelpSupportSheet role="company" onClose={() => setShowHelpModal(false)} />}
+    <div className="h-full bg-[#080808] overflow-y-auto pb-20" style={{ scrollbarWidth: 'none' }}>
+      {/* Header */}
+      <div className="px-5 pt-4 pb-2">
+        <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Company</p>
+        <h2 className="text-white font-black text-base tracking-tight">Profile</h2>
+      </div>
+
+      {/* Hero Section */}
+      <div className="px-5 pt-2 pb-5 flex flex-col items-center">
+        <div className="relative mb-3">
+          <div className="w-20 h-20 rounded-2xl bg-yellow-400/20 border-2 border-yellow-400/30 flex items-center justify-center">
+            <Briefcase className="w-10 h-10 text-yellow-400" />
+          </div>
+          <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-400 rounded-full border-2 border-[#080808] flex items-center justify-center">
+            <span className="text-black text-[8px] font-black">✓</span>
+          </div>
+        </div>
+        <h2 className="text-white font-black text-lg tracking-tight">Swift Mechanics Ltd</h2>
+        <div className="flex items-center gap-1.5 mt-1.5">
+          {[1,2,3,4,5].map(i => <Star key={i} className={`w-3.5 h-3.5 ${i <= 5 ? 'fill-yellow-400 text-yellow-400' : 'text-gray-600'}`} />)}
+          <span className="text-yellow-400 text-[12px] font-semibold ml-1">4.8</span>
+        </div>
+      </div>
+
+      <div className="px-5 space-y-3 pb-8">
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: 'Total Jobs', value: '156' },
+            { label: 'Avg Rating', value: '4.8' },
+            { label: 'Response', value: '8 min' },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] p-3 text-center">
+              <p className="text-yellow-400 font-black text-lg">{value}</p>
+              <p className="text-gray-600 text-[10px] mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Edit Profile Button */}
+        <button
+          onClick={navigateToEditProfile}
+          className="w-full bg-yellow-400 rounded-xl py-3.5 flex items-center justify-center gap-2 text-black text-[12px] font-black tracking-wide"
+        >
+          <Edit3 className="w-4 h-4" /> Edit Profile
+        </button>
+
+        {/* Company Details */}
+        <div className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-[#1a1a1a]">
+            <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Company Details</p>
+          </div>
+          <div className="p-4 space-y-2.5">
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Company Name</span><span className="text-white text-[12px] font-semibold">Swift Mechanics Ltd</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Registration</span><span className="text-white text-[12px] font-semibold">12345678</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">VAT Number</span><span className="text-gray-600 text-[12px]">Not registered</span></div>
+            <div className="h-px bg-[#1e1e1e]" />
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Base Location</span><span className="text-white text-[12px] font-semibold">Birmingham, UK</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Service Radius</span><span className="text-white text-[12px] font-semibold">50 miles</span></div>
+          </div>
+        </div>
+
+        {/* Team Overview */}
+        <div className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-[#1a1a1a]">
+            <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Team Overview</p>
+          </div>
+          <div className="p-4 space-y-2.5">
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Total Mechanics</span><span className="text-white text-[12px] font-semibold">{MECHANICS.length}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Online Now</span><span className="text-green-400 text-[12px] font-semibold">{MECHANICS.filter(m => m.status === 'active').length}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Active Jobs</span><span className="text-orange-400 text-[12px] font-semibold">{MECHANICS.reduce((sum, m) => sum + m.activeJobs, 0)}</span></div>
+          </div>
+        </div>
+
+        {/* Bank & Billing */}
+        <div className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-[#1a1a1a]">
+            <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Bank & Billing</p>
+          </div>
+          <div className="p-4 space-y-2.5">
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Bank</span><span className="text-white text-[12px] font-semibold">Barclays Business</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Account</span><span className="text-white text-[12px] font-semibold">•••• •••• 9876</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Sort Code</span><span className="text-white text-[12px] font-semibold">20-45-99</span></div>
+            <div className="h-px bg-[#1e1e1e]" />
+            <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Billing Address</span><span className="text-white text-[12px] font-semibold text-right max-w-[60%]">45 Industrial Park, Birmingham B12 8QT</span></div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <button 
+          onClick={navigateToEarnings}
+          className="w-full bg-[#0f0f0f] border border-[#1e1e1e] rounded-xl py-3.5 flex items-center gap-3 px-4 hover:border-yellow-400/30 transition-colors"
+        >
+          <div className="w-8 h-8 bg-yellow-400/10 rounded-lg flex items-center justify-center flex-shrink-0">
+            <DollarSign className="w-4 h-4 text-yellow-400" />
+          </div>
+          <div className="flex-1 text-left">
+            <p className="text-white text-[12px] font-semibold">Earnings & Invoices</p>
+            <p className="text-gray-600 text-[10px]">View company revenue & job history</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-gray-600" />
+        </button>
+
+        <button 
+          onClick={navigateToTeam}
+          className="w-full bg-[#0f0f0f] border border-[#1e1e1e] rounded-xl py-3.5 flex items-center gap-3 px-4 hover:border-yellow-400/30 transition-colors"
+        >
+          <div className="w-8 h-8 bg-yellow-400/10 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Users className="w-4 h-4 text-yellow-400" />
+          </div>
+          <div className="flex-1 text-left">
+            <p className="text-white text-[12px] font-semibold">Manage Team</p>
+            <p className="text-gray-600 text-[10px]">View & invite mechanics ({MECHANICS.length} total)</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-gray-600" />
+        </button>
+
+        <button 
+          onClick={() => setShowHelpModal(true)}
+          className="w-full bg-[#0f0f0f] border border-[#1e1e1e] rounded-xl py-3.5 flex items-center gap-3 px-4 hover:border-yellow-400/30 transition-colors"
+        >
+          <div className="w-8 h-8 bg-yellow-400/10 rounded-lg flex items-center justify-center flex-shrink-0">
+            <HelpCircle className="w-4 h-4 text-yellow-400" />
+          </div>
+          <div className="flex-1 text-left">
+            <p className="text-white text-[12px] font-semibold">Help & Support</p>
+            <p className="text-gray-600 text-[10px]">Contact TruckFix support team</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-gray-600" />
+        </button>
+
+        <button 
+          onClick={onLogout}
+          className="w-full border border-red-500/20 rounded-xl py-3.5 flex items-center justify-center gap-2 text-red-400 text-[12px] font-semibold bg-red-500/5 active:scale-[0.98] transition-transform"
+        >
+          <LogOut className="w-4 h-4" /> Log Out
+        </button>
+
+        <p className="text-center text-gray-700 text-[10px] pt-1">TruckFix v2.4.1 · Member since Jan 2026</p>
+      </div>
+    </div>
+    </>
+  );
+}
+
+// ─── Company Edit Profile ──────────────────────────────����──────────────────────
+function CompanyEditProfile({ navigateToProfile }: { navigateToProfile: () => void }) {
+  // Track original values to detect changes that require re-approval
+  const originalValues = {
+    companyName: 'Swift Mechanics Ltd',
+    hourlyRate: '75',
+    emergencyRate: '95',
+    calloutFee: '35',
+  };
+  
+  const [companyName, setCompanyName] = useState('Swift Mechanics Ltd');
+  const [hourlyRate, setHourlyRate] = useState('75');
+  const [emergencyRate, setEmergencyRate] = useState('95');
+  const [calloutFee, setCalloutFee] = useState('35');
+  const [serviceRadius, setServiceRadius] = useState('50');
+  const [showReapprovalWarning, setShowReapprovalWarning] = useState(false);
+
+  // Check if company name or rates have changed (requires re-approval)
+  const needsReapproval = 
+    companyName !== originalValues.companyName ||
+    Number(hourlyRate) !== Number(originalValues.hourlyRate) ||
+    Number(emergencyRate) !== Number(originalValues.emergencyRate) ||
+    Number(calloutFee) !== Number(originalValues.calloutFee);
+
+  const handleSave = () => {
+    if (needsReapproval) {
+      setShowReapprovalWarning(true);
+    } else {
+      navigateToProfile();
+    }
+  };
+
+  if (showReapprovalWarning) {
+    return (
+      <div className="h-full bg-[#080808] flex flex-col items-center justify-center px-8 text-center">
+        <div className="relative mb-5">
+          <div className="absolute inset-0 bg-yellow-400 rounded-full blur-[32px] opacity-20" />
+          <div className="relative w-16 h-16 bg-[#0f0f0f] border-2 border-yellow-400 rounded-full flex items-center justify-center">
+            <AlertCircle className="w-8 h-8 text-yellow-400" />
+          </div>
+        </div>
+        <p className="text-white font-black text-xl mb-2">Profile Under Review</p>
+        <p className="text-gray-400 text-sm leading-relaxed mb-6 max-w-[280px]">
+          You've changed your company name or rates. Your profile must be re-approved by TruckFix before you can receive new jobs.
+        </p>
+        <div className="w-full space-y-2.5">
+          <button
+            onClick={navigateToProfile}
+            className="w-full bg-yellow-400 text-black py-4 rounded-xl font-black text-sm tracking-widest uppercase"
+          >
+            I Understand
+          </button>
+          <p className="text-gray-600 text-[11px]">Approval typically takes 2-4 business hours</p>
         </div>
       </div>
     );
   }
 
-  return null;
+  return (
+    <div className="h-full bg-[#080808] flex flex-col">
+      <div className="px-5 pt-5 pb-4 border-b border-[#1a1a1a] flex items-center gap-3 flex-shrink-0">
+        <button onClick={navigateToProfile} className="w-8 h-8 rounded-xl bg-[#111] border border-[#2a2a2a] flex items-center justify-center">
+          <ChevronLeft className="w-4 h-4 text-gray-400" />
+        </button>
+        <div>
+          <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Company</p>
+          <h2 className="text-white font-black text-base tracking-tight">Edit Profile</h2>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-5 pb-20 space-y-5" style={{ scrollbarWidth: 'none' }}>
+        {/* Company Details */}
+        <div>
+          <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Company Details</p>
+          <div className="bg-yellow-400/5 border border-yellow-400/30 rounded-xl p-4 mb-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+              <p className="text-yellow-400 text-[11px] leading-relaxed">
+                Changing your company name requires re-approval. Your account will be temporarily restricted until verified.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Company Name</label>
+              <input 
+                value={companyName}
+                onChange={e => setCompanyName(e.target.value)}
+                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm" 
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Registration Number</label>
+              <input defaultValue="12345678" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">VAT Number <span className="text-gray-700 font-normal normal-case tracking-normal">(if applicable)</span></label>
+              <input placeholder="e.g. GB 123 4567 89" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-sm" />
+            </div>
+          </div>
+        </div>
+
+        {/* Service Details */}
+        <div>
+          <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Service Coverage</p>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Base Location</label>
+              <input defaultValue="Birmingham, UK" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Service Radius (miles)</label>
+              <input 
+                value={serviceRadius}
+                onChange={e => setServiceRadius(e.target.value)}
+                type="number"
+                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm" 
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Rates */}
+        <div>
+          <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Pricing</p>
+          <div className="bg-yellow-400/5 border border-yellow-400/30 rounded-xl p-4 mb-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+              <p className="text-yellow-400 text-[11px] leading-relaxed">
+                Changing your rates requires re-approval to ensure pricing compliance.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Hourly Rate (£)</label>
+              <input 
+                value={hourlyRate}
+                onChange={e => setHourlyRate(e.target.value)}
+                type="number" 
+                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm" 
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Emergency Rate (£/hr)</label>
+              <input 
+                value={emergencyRate}
+                onChange={e => setEmergencyRate(e.target.value)}
+                type="number" 
+                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm" 
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Call-out Fee (£)</label>
+              <input 
+                value={calloutFee}
+                onChange={e => setCalloutFee(e.target.value)}
+                type="number" 
+                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm" 
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Bank & Billing */}
+        <div>
+          <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Bank & Billing</p>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Bank Name</label>
+              <input defaultValue="Barclays Business" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Account Number</label>
+              <input defaultValue="••••9876" type="password" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Sort Code</label>
+              <input defaultValue="20-45-99" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm" />
+            </div>
+            <div className="h-px bg-[#1a1a1a]" />
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Billing Address</label>
+              <input defaultValue="45 Industrial Park, Birmingham B12 8QT" className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm" />
+            </div>
+          </div>
+        </div>
+
+        <div className="h-4" />
+      </div>
+
+      <div className="px-5 pb-6 pt-3 border-t border-[#1a1a1a] space-y-2.5 flex-shrink-0">
+        <button onClick={handleSave} className="w-full bg-yellow-400 text-black py-4 rounded-xl font-black text-sm tracking-widest uppercase">
+          Save Changes
+        </button>
+        <button onClick={navigateToProfile} className="w-full py-3 text-gray-600 text-[12px] font-semibold">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 }
 
-function InvoiceModal({ job, onClose }: { job: any; onClose: () => void }) {
-  // Build invoice lines from job data
-  const lines = [
-    { desc: 'Call-out Fee',     qty: 1,   unit: 85,  total: 85  },
-    { desc: 'Labour (1.5 hrs)', qty: 1.5, unit: 65,  total: 97.50 },
-    ...(job.parts || []).map((part: any) => ({
-      desc: part.name,
-      qty: 1,
-      unit: part.cost,
-      total: part.cost
-    }))
-  ];
-  const subtotal = lines.reduce((s, l) => s + l.total, 0);
-  const vat      = +(subtotal * 0.20).toFixed(2);
-  const grand    = subtotal + vat;
+// ─── Earnings ─────────────────────────────────────────────────────────────────
+const COMPLETED_JOBS = [
+  { id: 'TF-8810', truck: 'Rigid 8T · GP 221-560', issue: 'Fuel system fault', mechanic: 'Jake Wilson', date: '7 Mar 2026', gross: 185, net: 163, rating: 5, hours: '1h 45m' },
+  { id: 'TF-8797', truck: 'Flatbed · WC 334-112',  issue: 'Tyre replacement x2', mechanic: 'Jake Wilson', date: '5 Mar 2026', gross: 140, net: 123, rating: 5, hours: '55m' },
+  { id: 'TF-8782', truck: 'Tautliner · CA 100-221',issue: 'Air brake adjustment', mechanic: 'Dan McCarthy', date: '3 Mar 2026', gross: 220, net: 194, rating: 4, hours: '2h 10m' },
+  { id: 'TF-8771', truck: 'Tanker · KZN 44-310',   issue: 'Coolant system flush', mechanic: 'Sam Hughes', date: '28 Feb 2026',gross: 165, net: 145, rating: 5, hours: '1h 20m' },
+  { id: 'TF-8760', truck: 'Rigid 18T · WC 887-002',issue: 'Engine diagnostics',  mechanic: 'Jake Wilson', date: '25 Feb 2026',gross: 95,  net: 84,  rating: 4, hours: '40m' },
+  { id: 'TF-8744', truck: 'Flatbed · GP 551-889',  issue: 'Suspension repair',   mechanic: 'Dan McCarthy', date: '21 Feb 2026',gross: 310, net: 273, rating: 5, hours: '3h 05m' },
+];
 
-  const handleDownloadPDF = () => {
-    const invoiceHTML = `<!DOCTYPE html>
+const MONTHLY_BARS = [
+  { month: 'Oct', net: 820  },
+  { month: 'Nov', net: 1140 },
+  { month: 'Dec', net: 960  },
+  { month: 'Jan', net: 1380 },
+  { month: 'Feb', net: 1050 },
+  { month: 'Mar', net: 480, current: true },
+];
+
+function CompanyEarnings({ navigateToProfile }: { navigateToProfile: () => void }) {
+  const [invoiceJob, setInvoiceJob] = useState<typeof COMPLETED_JOBS[0] | null>(null);
+  const marchGross = COMPLETED_JOBS.filter(j => j.date.includes('Mar')).reduce((s, j) => s + j.gross, 0);
+  const marchNet   = COMPLETED_JOBS.filter(j => j.date.includes('Mar')).reduce((s, j) => s + j.net, 0);
+  const allTimeNet = COMPLETED_JOBS.reduce((s, j) => s + j.net, 0);
+  const maxBar = Math.max(...MONTHLY_BARS.map(b => b.net));
+
+  return (
+    <div className="h-full bg-[#080808] flex flex-col relative">
+      {/* Header */}
+      <div className="px-5 pt-5 pb-4 border-b border-[#1a1a1a] flex items-center gap-3 flex-shrink-0">
+        <button onClick={navigateToProfile} className="w-8 h-8 rounded-xl bg-[#111] border border-[#2a2a2a] flex items-center justify-center">
+          <ChevronLeft className="w-4 h-4 text-gray-400" />
+        </button>
+        <div>
+          <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Company</p>
+          <h2 className="text-white font-black text-base tracking-tight">Earnings &amp; Invoices</h2>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+        {/* Summary cards */}
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: 'Mar Gross', value: `£${marchGross}`, sub: 'Before platform fee' },
+            { label: 'Mar Net',   value: `£${marchNet}`,   sub: 'After 12% fee' },
+            { label: 'All-time',  value: `£${allTimeNet}`, sub: 'Net since Mar 2026' },
+          ].map(({ label, value, sub }) => (
+            <div key={label} className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] p-3 text-center">
+              <p className="text-yellow-400 font-black text-[15px]">{value}</p>
+              <p className="text-gray-500 text-[9px] mt-0.5 uppercase tracking-wide font-semibold">{label}</p>
+              <p className="text-gray-700 text-[9px] mt-0.5">{sub}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Monthly bar chart */}
+        <div className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Monthly Net Income</p>
+            <p className="text-gray-600 text-[10px]">Last 6 months</p>
+          </div>
+          <div className="flex items-end gap-2 h-[90px]">
+            {MONTHLY_BARS.map(bar => {
+              const pct = (bar.net / maxBar) * 100;
+              return (
+                <div key={bar.month} className="flex-1 flex flex-col items-center gap-1.5">
+                  <p className={`text-[8px] font-black leading-none ${bar.current ? 'text-yellow-400' : 'text-gray-700'}`}>
+                    £{bar.net >= 1000 ? (bar.net / 1000).toFixed(1) + 'k' : bar.net}
+                  </p>
+                  <div className="w-full flex items-end" style={{ height: 56 }}>
+                    <div
+                      className={`w-full rounded-t-md ${bar.current ? 'bg-yellow-400' : 'bg-[#222]'}`}
+                      style={{ height: `${Math.max(pct, 4)}%` }}
+                    />
+                  </div>
+                  <p className={`text-[9px] font-semibold ${bar.current ? 'text-yellow-400' : 'text-gray-600'}`}>{bar.month}</p>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-gray-700 text-[9px] mt-2 text-center">12% platform fee already deducted from net figures</p>
+        </div>
+
+        {/* Completed Jobs list */}
+        <div>
+          <div className="flex items-center justify-between mb-2.5">
+            <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Completed Jobs</p>
+            <span className="text-gray-600 text-[10px]">{COMPLETED_JOBS.length} jobs</span>
+          </div>
+          <div className="space-y-2.5">
+            {COMPLETED_JOBS.map(job => (
+              <div key={job.id} className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] overflow-hidden">
+                <div className="p-3.5">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1 min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-gray-600 text-[10px] font-mono">{job.id}</span>
+                        <span className="text-gray-700 text-[10px]">·</span>
+                        <span className="text-gray-500 text-[10px]">{job.date}</span>
+                      </div>
+                      <p className="text-white text-[12px] font-semibold mb-0.5">{job.truck}</p>
+                      <p className="text-gray-500 text-[11px]">{job.issue}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-yellow-400 font-black text-[15px]">£{job.net}</p>
+                      <p className="text-gray-600 text-[9px]">net earned</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-0.5">
+                      {[1,2,3,4,5].map(s => (
+                        <Star key={s} className={`w-2.5 h-2.5 ${s <= job.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-700'}`} />
+                      ))}
+                    </div>
+                    <span className="text-gray-600 text-[10px]">·</span>
+                    <span className="text-gray-500 text-[10px]">{job.mechanic}</span>
+                    <span className="text-gray-600 text-[10px]">·</span>
+                    <Clock className="w-2.5 h-2.5 text-gray-600 flex-shrink-0" />
+                    <span className="text-gray-500 text-[10px]">{job.hours}</span>
+                  </div>
+                  <div className="pt-2.5 border-t border-[#1a1a1a]">
+                    <button
+                      onClick={() => setInvoiceJob(job)}
+                      className="w-full bg-[#111] border border-[#2a2a2a] hover:border-yellow-400/40 rounded-lg px-2.5 py-2 transition-colors group"
+                    >
+                      <div className="space-y-0.5 mb-2">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600 text-[10px]">Gross</span>
+                          <span className="text-white text-[10px] font-semibold">£{job.gross}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600 text-[10px]">Fee (12%)</span>
+                          <span className="text-gray-500 text-[10px]">-£{job.gross - job.net}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-[#2a2a2a] pt-0.5 mt-0.5">
+                          <span className="text-yellow-400 text-[10px] font-black">Net</span>
+                          <span className="text-yellow-400 text-[10px] font-black">£{job.net}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-center gap-1.5 pt-1.5 border-t border-[#1e1e1e]">
+                        <FileText className="w-3.5 h-3.5 text-gray-500 group-hover:text-yellow-400 transition-colors" />
+                        <span className="text-gray-400 group-hover:text-yellow-400 text-[11px] font-semibold transition-colors">View Invoice</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="h-2" />
+      </div>
+
+      {/* Invoice sheet */}
+      {invoiceJob && (() => {
+        const handleDownloadPDF = () => {
+          const invoiceHTML = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Invoice ${job.invoiceNo}</title>
+  <title>Invoice INV-${invoiceJob.id}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
@@ -550,7 +1850,6 @@ function InvoiceModal({ job, onClose }: { job: any; onClose: () => void }) {
     }
     tr:last-child td { border-bottom: none; }
     .text-right { text-align: right; }
-    .text-center { text-align: center; }
     
     .totals { 
       margin-left: auto; 
@@ -613,44 +1912,48 @@ function InvoiceModal({ job, onClose }: { job: any; onClose: () => void }) {
         <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='200' viewBox='0 0 400 200'%3E%3Cdefs%3E%3Cpattern id='stripes' patternUnits='userSpaceOnUse' width='60' height='60' patternTransform='rotate(45)'%3E%3Crect width='30' height='60' fill='%23facc15'/%3E%3Crect x='30' width='30' height='60' fill='%23000'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='400' height='200' fill='url(%23stripes)'/%3E%3Crect y='60' width='400' height='80' fill='%23000'/%3E%3Ctext x='50' y='130' font-family='Arial Black, sans-serif' font-size='52' font-weight='900' fill='white'%3ETRUCK%3C/text%3E%3Ctext x='245' y='130' font-family='Arial Black, sans-serif' font-size='52' font-weight='900' fill='%23facc15'%3EFIX%3C/text%3E%3C/svg%3E" alt="TruckFix" class="logo-image" />
       </div>
       <div class="invoice-info">
-        <div class="invoice-no">${job.invoiceNo}</div>
-        <div class="invoice-date">Tax Invoice · ${job.completedDate}</div>
+        <div class="invoice-no">INV-${invoiceJob.id}</div>
+        <div class="invoice-date">Tax Invoice · ${invoiceJob.date}</div>
       </div>
     </div>
     
     <div class="details">
       <div class="details-box">
-        <div class="details-title">Billed To (Fleet Operator)</div>
-        <div class="details-name">Logistix Transport</div>
-        <div class="details-info">VAT Reg: GB 412 033 4501</div>
-        <div class="details-info">Industrial Estate</div>
-        <div class="details-info">Johannesburg, GP</div>
-        <div class="details-info">South Africa</div>
+        <div class="details-title">From (Company)</div>
+        <div class="details-name">United Mechanics Ltd</div>
+        <div class="details-info">VAT Reg: GB 123 456 789</div>
+        <div class="details-info">45 Industrial Park</div>
+        <div class="details-info">Birmingham B12 8QT</div>
+        <div class="details-info">United Kingdom</div>
       </div>
       <div class="details-box">
-        <div class="details-title">Service Provider (Mechanic)</div>
-        <div class="details-name">${job.mechanic}</div>
-        <div class="details-info">TruckFix Verified Mechanic</div>
-        <div class="rating">${'★'.repeat(job.rating)}${'☆'.repeat(5-job.rating)} ${job.rating}.0</div>
+        <div class="details-title">Assigned Mechanic</div>
+        <div class="details-name">${invoiceJob.mechanic}</div>
+        <div class="details-info">Company Employee</div>
+        <div class="rating">${'★'.repeat(invoiceJob.rating)}${'☆'.repeat(5-invoiceJob.rating)} ${invoiceJob.rating}.0</div>
       </div>
     </div>
     
     <div class="job-info">
       <div class="job-row">
         <span class="job-label">Job Reference</span>
-        <span class="job-value">${job.id}</span>
+        <span class="job-value">${invoiceJob.id}</span>
       </div>
       <div class="job-row">
         <span class="job-label">Vehicle</span>
-        <span class="job-value">${job.truck}</span>
+        <span class="job-value">${invoiceJob.truck}</span>
+      </div>
+      <div class="job-row">
+        <span class="job-label">Issue Description</span>
+        <span class="job-value">${invoiceJob.issue}</span>
+      </div>
+      <div class="job-row">
+        <span class="job-label">Time on Site</span>
+        <span class="job-value">${invoiceJob.hours}</span>
       </div>
       <div class="job-row">
         <span class="job-label">Service Date</span>
-        <span class="job-value">${job.completedDate}</span>
-      </div>
-      <div class="job-row">
-        <span class="job-label">Location</span>
-        <span class="job-value">${job.location}</span>
+        <span class="job-value">${invoiceJob.date}</span>
       </div>
     </div>
     
@@ -658,32 +1961,45 @@ function InvoiceModal({ job, onClose }: { job: any; onClose: () => void }) {
       <thead>
         <tr>
           <th>Description</th>
-          <th class="text-center">Qty</th>
           <th class="text-right">Unit Price</th>
           <th class="text-right">Total</th>
         </tr>
       </thead>
       <tbody>
-        ${lines.map(l => `<tr><td><strong>${l.desc}</strong></td><td class="text-center">${l.qty}</td><td class="text-right">£${l.unit}</td><td class="text-right">£${l.total.toLocaleString()}</td></tr>`).join('')}
+        <tr>
+          <td><strong>Labour Charges</strong></td>
+          <td class="text-right">£${Math.round(invoiceJob.gross * 0.55)}</td>
+          <td class="text-right">£${Math.round(invoiceJob.gross * 0.55)}</td>
+        </tr>
+        <tr>
+          <td><strong>Emergency Call-out Fee</strong></td>
+          <td class="text-right">£35</td>
+          <td class="text-right">£35</td>
+        </tr>
+        <tr>
+          <td><strong>Parts & Materials</strong></td>
+          <td class="text-right">£${Math.round(invoiceJob.gross * 0.25)}</td>
+          <td class="text-right">£${Math.round(invoiceJob.gross * 0.25)}</td>
+        </tr>
       </tbody>
     </table>
     
     <div class="totals">
       <div class="totals-row">
-        <span>Subtotal</span>
-        <span><strong>£${subtotal.toLocaleString()}</strong></span>
+        <span>Gross Total</span>
+        <span><strong>£${invoiceJob.gross}</strong></span>
       </div>
       <div class="totals-row">
-        <span>VAT (20%)</span>
-        <span><strong>£${vat.toLocaleString()}</strong></span>
+        <span>Platform Fee (12%)</span>
+        <span><strong>-£${invoiceJob.gross - invoiceJob.net}</strong></span>
       </div>
       <div class="total-final">
-        <span>TOTAL DUE</span>
-        <span>£${grand.toLocaleString()}</span>
+        <span>NET PAYOUT</span>
+        <span>£${invoiceJob.net}</span>
       </div>
     </div>
     
-    <div class="status">✓ PAID · ${job.completedDate}</div>
+    <div class="status">✓ PAID · ${invoiceJob.date}</div>
     
     <div class="footer">
       <p><strong>TruckFix Platform</strong> · Emergency HGV Breakdown & Repair Services</p>
@@ -693,1886 +2009,134 @@ function InvoiceModal({ job, onClose }: { job: any; onClose: () => void }) {
   </div>
 </body>
 </html>`;
-    const blob = new Blob([invoiceHTML], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `TruckFix_Invoice_${job.invoiceNo}_${job.id}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
 
-  return (
-    <div className="absolute inset-0 z-40 bg-black/80 flex flex-col justify-end">
-      <div className="bg-[#0d0d0d] rounded-t-3xl border-t border-[#2a2a2a] flex flex-col max-h-[92%]">
-        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-          <div className="w-10 h-1 bg-[#333] rounded-full" />
-        </div>
-        <div className="px-5 py-3 border-b border-[#1a1a1a] flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-yellow-400" />
-            <div>
-              <p className="text-white font-black text-sm">{job.invoiceNo}</p>
-              <p className="text-gray-600 text-[10px]">Tax Invoice</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 bg-[#1a1a1a] rounded-full flex items-center justify-center">
-            <X className="w-3.5 h-3.5 text-gray-500" />
-          </button>
-        </div>
-        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-[#111] rounded-xl p-3 border border-[#1e1e1e]">
-              <p className="text-gray-600 text-[9px] uppercase tracking-widest mb-1.5">Billed To</p>
-              <p className="text-white text-[11px] font-black">Logistix Transport</p>
-              <p className="text-gray-600 text-[10px] mt-0.5">VAT: 4120334501</p>
-              <p className="text-gray-600 text-[10px]">Johannesburg, GP</p>
-            </div>
-            <div className="bg-[#111] rounded-xl p-3 border border-[#1e1e1e]">
-              <p className="text-gray-600 text-[9px] uppercase tracking-widest mb-1.5">Mechanic</p>
-              <p className="text-white text-[11px] font-black">{job.mechanic}</p>
-              <p className="text-gray-600 text-[10px] mt-0.5">TruckFix Verified</p>
-              <div className="flex items-center gap-0.5 mt-1">
-                {[1,2,3,4,5].map(s => (
-                  <Star key={s} className={`w-2.5 h-2.5 ${s <= job.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-700'}`} />
-                ))}
-                <span className="text-yellow-400 text-[9px] ml-0.5">{job.rating}.0</span>
-              </div>
-            </div>
-          </div>
-          <div className="bg-[#111] rounded-xl p-3 border border-[#1e1e1e] space-y-1.5">
-            {[
-              { label: 'Job Ref',   value: job.id,            mono: true  },
-              { label: 'Vehicle',   value: job.truck,          mono: false },
-              { label: 'Completed', value: job.completedDate,  mono: false },
-              { label: 'Location',  value: job.location,       mono: false },
-            ].map(({ label, value, mono }) => (
-              <div key={label} className="flex justify-between">
-                <span className="text-gray-600 text-[11px]">{label}</span>
-                <span className={`text-white text-[11px] font-semibold ${mono ? 'font-mono' : ''}`}>{value}</span>
-              </div>
-            ))}
-          </div>
-          <div className="bg-[#111] rounded-xl border border-[#1e1e1e] overflow-hidden">
-            <div className="px-3 py-2 bg-[#161616] border-b border-[#1e1e1e] grid grid-cols-12 gap-1">
-              <span className="text-gray-600 text-[9px] uppercase tracking-widest col-span-5">Description</span>
-              <span className="text-gray-600 text-[9px] uppercase tracking-widest col-span-2 text-center">Qty</span>
-              <span className="text-gray-600 text-[9px] uppercase tracking-widest col-span-2 text-right">Unit</span>
-              <span className="text-gray-600 text-[9px] uppercase tracking-widest col-span-3 text-right">Total</span>
-            </div>
-            {lines.map((l, i) => (
-              <div key={i} className="px-3 py-2.5 grid grid-cols-12 gap-1 border-b border-[#1a1a1a] last:border-0">
-                <span className="text-white text-[11px] col-span-5">{l.desc}</span>
-                <span className="text-gray-500 text-[11px] col-span-2 text-center">{l.qty}</span>
-                <span className="text-gray-500 text-[11px] col-span-2 text-right">£{l.unit}</span>
-                <span className="text-white text-[11px] font-semibold col-span-3 text-right">£{l.total.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
-          <div className="bg-[#111] rounded-xl border border-[#1e1e1e] overflow-hidden">
-            <div className="px-4 py-2.5 flex justify-between border-b border-[#1a1a1a]">
-              <span className="text-gray-500 text-[11px]">Subtotal</span>
-              <span className="text-white text-[11px] font-semibold">£{subtotal.toLocaleString()}</span>
-            </div>
-            <div className="px-4 py-2.5 flex justify-between border-b border-[#1a1a1a]">
-              <span className="text-gray-500 text-[11px]">VAT (20%)</span>
-              <span className="text-white text-[11px] font-semibold">£{vat.toLocaleString()}</span>
-            </div>
-            <div className="px-4 py-3 flex justify-between bg-yellow-400/5 border-t border-yellow-400/20">
-              <span className="text-yellow-400 text-[12px] font-black uppercase tracking-wide">Total Due</span>
-              <span className="text-yellow-400 font-black text-sm">£{grand.toLocaleString()}</span>
-            </div>
-          </div>
-          <div className="flex items-center justify-center gap-2 py-2">
-            <CheckCircle className="w-4 h-4 text-green-400" />
-            <span className="text-green-400 text-[12px] font-black uppercase tracking-widest">PAID · {job.completedDate}</span>
-          </div>
-        </div>
-        <div className="px-5 pb-5 pt-3 border-t border-[#1a1a1a] flex gap-2.5 flex-shrink-0">
-          <button onClick={handleDownloadPDF} className="flex-1 flex items-center justify-center gap-2 bg-yellow-400 text-black py-3.5 rounded-xl font-black text-[12px] tracking-widest uppercase active:scale-[0.98] transition-transform">
-            <Download className="w-4 h-4" />
-            Download PDF
-          </button>
-          <button onClick={onClose} className="w-12 h-12 bg-[#111] border border-[#2a2a2a] rounded-xl flex items-center justify-center flex-shrink-0">
-            <X className="w-4 h-4 text-gray-500" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+          const blob = new Blob([invoiceHTML], { type: 'text/html' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `TruckFix_Invoice_${invoiceJob.id}.html`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        };
 
-function FleetDashboard({ setTab }: { setTab: (t: string) => void }) {
-  const [jobView, setJobView] = useState<'active' | 'completed'>('active');
-  const [invoiceJob, setInvoiceJob] = useState<any>(null);
-  const [selectedJob, setSelectedJob] = useState<any>(null);
-  const [completionReviewJob, setCompletionReviewJob] = useState<any>(null);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [showChat, setShowChat] = useState(false);
-  const [showCancelSheet, setShowCancelSheet] = useState(false);
-  const [chatJob, setChatJob] = useState<any>(null);
-
-  const activeJobs = [
-    {
-      id: 'TF-8823', truck: 'WC 234-567 · Flatbed',
-      issue: 'Brake system repair — awaiting your approval',
-      mechanic: 'James M.', status: 'AWAITING APPROVAL', urgency: 'MEDIUM', eta: null, pay: '£275',
-      statusColor: 'text-yellow-400', statusBg: 'bg-yellow-500', statusBorder: 'border-l-yellow-500',
-      urgencyColor: 'text-blue-400', urgencyBg: 'bg-blue-400/15 border-blue-400/30',
-    },
-    {
-      id: 'TF-8821', truck: 'CA 456-789 · Tautliner',
-      issue: 'Engine overheating — M1 near Birmingham',
-      mechanic: 'James M.', status: 'EN ROUTE', urgency: 'HIGH', eta: '18 min',
-      statusColor: 'text-orange-400', statusBg: 'bg-orange-500', statusBorder: 'border-l-orange-500',
-      urgencyColor: 'text-orange-400', urgencyBg: 'bg-orange-400/15 border-orange-400/30',
-    },
-    {
-      id: 'TF-8819', truck: 'GP 112-033 · Rigid Truck',
-      issue: 'Left rear tyre blowout — N14 off-ramp',
-      mechanic: 'Awaiting mechanic…', status: 'POSTED', urgency: 'CRITICAL', eta: null,
-      statusColor: 'text-red-400', statusBg: 'bg-red-500', statusBorder: 'border-l-red-500',
-      urgencyColor: 'text-red-400', urgencyBg: 'bg-red-400/15 border-red-400/30',
-    },
-    {
-      id: 'TF-8814', truck: 'KZN 78-99 · Tanker',
-      issue: 'Air brake fault — Port of Durban',
-      mechanic: 'Sipho M.', status: 'ON SITE', urgency: 'MEDIUM', eta: null,
-      statusColor: 'text-green-400', statusBg: 'bg-green-500', statusBorder: 'border-l-green-500',
-      urgencyColor: 'text-blue-400', urgencyBg: 'bg-blue-400/15 border-blue-400/30',
-    },
-  ];
-
-  const completedJobs = [
-    { id: 'TF-8800', truck: 'CA 456-789 · Tautliner',   issue: 'Coolant leak — radiator hose replaced',   mechanic: 'James M.', rating: 5, completedDate: '8 Mar 2026',  total: '£285', invoiceNo: 'INV-2026-0088', location: 'M1, Birmingham', parts: [{ name: 'Radiator hose', cost: 45 }, { name: 'Coolant (5L)', cost: 28 }] },
-    { id: 'TF-8791', truck: 'GP 112-033 · Rigid Truck',  issue: 'Battery failure — new battery fitted',     mechanic: 'Tom S.',  rating: 5, completedDate: '5 Mar 2026',  total: '£210', invoiceNo: 'INV-2026-0085', location: 'M6, Manchester', parts: [{ name: 'Heavy-duty battery 12V', cost: 95 }] },
-    { id: 'TF-8783', truck: 'KZN 78-99 · Tanker',        issue: 'Air brake actuator replaced',              mechanic: 'Paul K.',  rating: 4, completedDate: '2 Mar 2026',  total: '£425', invoiceNo: 'INV-2026-0081', location: 'A1, Leeds', parts: [{ name: 'Air brake actuator', cost: 185 }, { name: 'Brake line fittings', cost: 22 }] },
-    { id: 'TF-8771', truck: 'WC 234-567 · Flatbed',      issue: 'Dual tyre blowout — 2 tyres replaced',    mechanic: 'Deon V.',   rating: 4, completedDate: '27 Feb 2026', total: '£170', invoiceNo: 'INV-2026-0077', location: 'N2 Somerset West, WC', parts: [{ name: 'Heavy-duty tyre 295/80R22.5', cost: 145 }, { name: 'Wheel valve', cost: 8 }] },
-    { id: 'TF-8760', truck: 'FS 901-445 · Semi',         issue: 'Starter motor replaced',                  mechanic: 'Sipho M.',  rating: 5, completedDate: '22 Feb 2026', total: '£260', invoiceNo: 'INV-2026-0071', location: 'Bloemfontein CBD, FS', parts: [{ name: 'Starter motor assembly', cost: 125 }] },
-  ];
-
-  return (
-    <div className="h-full bg-[#080808] flex flex-col overflow-y-auto relative" style={{ scrollbarWidth: 'none' }}>
-
-      {/* Invoice modal */}
-      {invoiceJob && <InvoiceModal job={invoiceJob} onClose={() => setInvoiceJob(null)} />}
-
-      {/* Job detail sheet */}
-      {selectedJob && <DashboardJobSheet 
-        job={selectedJob} 
-        onClose={() => setSelectedJob(null)} 
-        onOpenChat={() => { setChatJob(selectedJob); setShowChat(true); setSelectedJob(null); }}
-        onCancel={() => setShowCancelSheet(true)}
-      />}
-
-      {/* Completion review sheet */}
-      {completionReviewJob && (
-        <CompletionReviewSheet 
-          job={completionReviewJob} 
-          onClose={() => setCompletionReviewJob(null)}
-          onComplete={() => {
-            // Move job to completed and show success message
-            setCompletionReviewJob(null);
-          }}
-        />
-      )}
-
-      {/* Notifications overlay */}
-      {showNotifications && <NotificationsScreen onClose={() => setShowNotifications(false)} />}
-
-      {/* Chat overlay */}
-      {showChat && chatJob && <ChatScreen job={chatJob} onClose={() => {setShowChat(false); setChatJob(null);}} role="fleet" />}
-
-      {/* Cancel job sheet */}
-      {showCancelSheet && selectedJob && (
-        <CancelJobSheet 
-          job={selectedJob} 
-          mechanicEnRoute={selectedJob.status === 'EN ROUTE'} 
-          onClose={() => setShowCancelSheet(false)} 
-          onConfirm={() => {
-            setShowCancelSheet(false);
-            setSelectedJob(null);
-          }} 
-        />
-      )}
-
-      {/* Header */}
-      <div className="px-5 pt-4 pb-3 bg-[#080808] sticky top-0 z-10">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-gray-400 text-[11px] font-semibold uppercase tracking-widest">Good morning</p>
-            <h2 className="text-white font-black text-xl tracking-tight">Logistix Transport</h2>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <button onClick={() => setShowNotifications(true)} className="relative w-9 h-9 bg-[#111] rounded-xl border border-[#1e1e1e] flex items-center justify-center">
-              <Bell className="w-4 h-4 text-gray-400" />
-              <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-[#111]" />
-            </button>
-            <button onClick={() => setTab('profile')} className="w-9 h-9 bg-yellow-400 rounded-xl flex items-center justify-center hover:bg-yellow-300 transition-colors">
-              <span className="text-black font-black text-xs">LT</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="px-5 pb-4">
-        <div className="grid grid-cols-3 gap-2.5">
-          {[
-            { label: 'Active', value: '3', icon: Zap, color: 'text-yellow-400', dot: 'bg-yellow-400' },
-            { label: 'Awaiting', value: '1', icon: AlertTriangle, color: 'text-red-400', dot: 'bg-red-500' },
-            { label: 'This Month', value: '14', icon: CheckCircle, color: 'text-green-400', dot: 'bg-green-500' },
-          ].map(({ label, value, icon: Icon, color, dot }) => (
-            <div key={label} className="bg-[#0f0f0f] border border-[#1a1a1a] rounded-xl p-3">
-              <div className="flex items-center gap-1.5 mb-2">
-                <div className={`w-2 h-2 rounded-full ${dot}`} />
-                <Icon className={`w-3 h-3 ${color}`} />
-              </div>
-              <p className={`font-black text-2xl ${color}`}>{value}</p>
-              <p className="text-gray-600 text-[10px] font-medium uppercase tracking-wider mt-0.5">{label}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Awaiting Approval Banner */}
-      {activeJobs.some(j => j.status === 'AWAITING APPROVAL') && (
-        <div className="px-5 pb-4">
-          <button 
-            onClick={() => setCompletionReviewJob(activeJobs.find(j => j.status === 'AWAITING APPROVAL'))} 
-            className="w-full bg-green-400/10 border-2 border-green-400/30 rounded-xl p-3.5 flex items-center gap-3 active:scale-[0.98] transition-transform"
-          >
-            <div className="w-10 h-10 bg-green-400/20 rounded-xl flex items-center justify-center flex-shrink-0">
-              <CheckCircle className="w-5 h-5 text-green-400" />
-            </div>
-            <div className="flex-1 text-left">
-              <p className="text-green-400 font-black text-sm tracking-tight">Job Awaiting Approval</p>
-              <p className="text-green-400/70 text-[11px]">Tap to review & release payment</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-green-400" />
-          </button>
-        </div>
-      )}
-
-      {/* Post Job CTA */}
-      <div className="px-5 pb-4">
-        <button onClick={() => setTab('post-job')} className="w-full bg-yellow-400 rounded-xl p-4 flex items-center justify-between group">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-black/20 rounded-xl flex items-center justify-center">
-              <PlusCircle className="w-5 h-5 text-black" />
-            </div>
-            <div className="text-left">
-              <p className="text-black font-black text-sm tracking-tight">Post a Breakdown Job</p>
-              <p className="text-black/60 text-[11px]">Get mechanics responding in minutes</p>
-            </div>
-          </div>
-          <ChevronRight className="w-5 h-5 text-black/60 group-hover:translate-x-0.5 transition-transform" />
-        </button>
-      </div>
-
-      {/* ── Jobs section with Active / Completed toggle ── */}
-      <div className="px-5 pb-2">
-
-        {/* Segmented toggle header */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex bg-[#111] border border-[#1e1e1e] rounded-xl p-0.5 gap-0.5">
-            <button
-              onClick={() => setJobView('active')}
-              className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wide transition-all ${
-                jobView === 'active' ? 'bg-yellow-400 text-black' : 'text-gray-600'
-              }`}
-            >
-              Active
-              <span className={`ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full ${jobView === 'active' ? 'bg-black/20 text-black' : 'bg-[#1e1e1e] text-gray-600'}`}>
-                {activeJobs.length}
-              </span>
-            </button>
-            <button
-              onClick={() => setJobView('completed')}
-              className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wide transition-all ${
-                jobView === 'completed' ? 'bg-yellow-400 text-black' : 'text-gray-600'
-              }`}
-            >
-              Completed
-              <span className={`ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full ${jobView === 'completed' ? 'bg-black/20 text-black' : 'bg-[#1e1e1e] text-gray-600'}`}>
-                {completedJobs.length}
-              </span>
-            </button>
-          </div>
-          {jobView === 'active' && (
-            <button onClick={() => setTab('tracking')} className="text-yellow-400 text-[11px] font-semibold">View All</button>
-          )}
-        </div>
-
-        {/* ── Active jobs list ── */}
-        {jobView === 'active' && (
-          <div className="space-y-2.5">
-            {activeJobs.map(job => (
-              <button
-                key={job.id}
-                onClick={() => {
-                  if (job.status === 'AWAITING APPROVAL') {
-                    setCompletionReviewJob(job);
-                  } else {
-                    setSelectedJob(job);
-                  }
-                }}
-                className={`w-full text-left bg-[#0f0f0f] rounded-xl border border-[#1e1e1e] border-l-4 ${job.statusBorder} overflow-hidden transition-opacity active:opacity-80`}
-              >
-                <div className="p-3.5">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-600 text-[10px] font-mono">{job.id}</span>
-                      <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full border ${job.urgencyBg} ${job.urgencyColor}`}>
-                        {job.urgency}
-                      </span>
-                    </div>
-                    <span className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wide ${job.statusColor}`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${job.statusBg}`} />
-                      {job.status}
-                    </span>
-                  </div>
-                  <p className="text-white text-[12px] font-semibold mb-1">{job.truck}</p>
-                  <p className="text-white text-[12px] mb-2.5 line-clamp-1">{job.issue}</p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-4 h-4 bg-[#1a1a1a] rounded-full flex items-center justify-center">
-                        <Wrench className="w-2.5 h-2.5 text-gray-500" />
-                      </div>
-                      <span className="text-gray-400 text-[11px]">{job.mechanic}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {job.eta && <span className="text-yellow-400 text-[11px] font-semibold">ETA {job.eta}</span>}
-                      <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
-                    </div>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* ── Completed jobs list ── */}
-        {jobView === 'completed' && (
-          <div className="space-y-2.5">
-            {completedJobs.map(job => (
-              <div key={job.id} className="bg-[#0f0f0f] rounded-xl border border-[#1e1e1e] border-l-4 border-l-green-500 overflow-hidden">
-                <div className="p-3.5">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-600 text-[10px] font-mono">{job.id}</span>
-                      <span className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full border text-green-400 bg-green-400/10 border-green-400/30">DONE</span>
-                    </div>
-                    <span className="text-gray-600 text-[10px]">{job.completedDate}</span>
-                  </div>
-                  <p className="text-white text-[12px] font-semibold mb-0.5">{job.truck}</p>
-                  <p className="text-white text-[12px] mb-2.5 line-clamp-1">{job.issue}</p>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-4 h-4 bg-[#1a1a1a] rounded-full flex items-center justify-center">
-                        <Wrench className="w-2.5 h-2.5 text-gray-500" />
-                      </div>
-                      <span className="text-gray-300 text-[11px]">{job.mechanic}</span>
-                      <div className="flex items-center gap-0.5 ml-1">
-                        {[1,2,3,4,5].map(s => (
-                          <Star key={s} className={`w-2.5 h-2.5 ${s <= job.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-700'}`} />
-                        ))}
-                      </div>
-                    </div>
-                    <span className="text-white font-black text-sm">{job.total}</span>
-                  </div>
-                  {/* Invoice actions */}
-                  <div className="flex items-center gap-2 pt-2.5 border-t border-[#1a1a1a]">
-                    <button
-                      onClick={() => setInvoiceJob(job)}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-[#111] border border-[#2a2a2a] hover:border-yellow-400/40 rounded-lg py-2 transition-colors group"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-gray-500 group-hover:text-yellow-400 transition-colors" />
-                      <span className="text-gray-400 group-hover:text-yellow-400 text-[11px] font-semibold transition-colors">View Invoice</span>
-                    </button>
-                    <button
-                      onClick={() => setInvoiceJob(job)}
-                      className="flex items-center justify-center gap-1.5 bg-[#111] border border-[#2a2a2a] hover:border-yellow-400/40 rounded-lg py-2 px-3 transition-colors group"
-                    >
-                      <Download className="w-3.5 h-3.5 text-gray-500 group-hover:text-yellow-400 transition-colors" />
-                      <span className="text-gray-400 group-hover:text-yellow-400 text-[11px] font-semibold transition-colors">PDF</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Monthly stats bar */}
-      <div className="px-5 py-4 mt-2">
-        <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#1a1a1a]">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-white text-[12px] font-black">March Spend</p>
-            <p className="text-yellow-400 font-black text-sm">£4,250</p>
-          </div>
-          <div className="h-2 bg-[#1a1a1a] rounded-full overflow-hidden">
-            <div className="h-full bg-yellow-400 rounded-full" style={{ width: '64%' }} />
-          </div>
-          <p className="text-gray-600 text-[10px] mt-1.5">64% of monthly budget (£6,500)</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Post Job ─────────────────────────────────────────────────────────────────────
-
-const UK_ADDRESSES = [
-  'M1 Motorway, Junction 24 — Leicester Services',
-  'M6 Motorway, Corley Services, Warwickshire',
-  'M25 Motorway, Thurrock Services, Essex',
-  'A1(M) Motorway, Wetherby Services, Yorkshire',
-  'M62 Motorway, Birch Services, Manchester',
-  'Birmingham City Centre, Broad St, West Midlands',
-  'Manchester City Centre, Deansgate, Greater Manchester',
-  'M4 Motorway, Reading Services, Berkshire',
-  'Leeds City Centre, Wellington St, West Yorkshire',
-  'Liverpool Docks, Seaforth, Merseyside',
-  'Heathrow Airport, Bath Rd, London',
-  'Sheffield Industrial Estate, South Yorkshire',
-  'Bristol City Centre, Temple Meads, Bristol',
-  'M5 Motorway, Sedgemoor Services, Somerset',
-  'Newcastle upon Tyne, Quayside, Tyne and Wear',
-];
-
-const JOB_TYPES = [
-  { icon: '🛞', label: 'Flat / Damaged Tyre' },
-  { icon: '🔋', label: 'Battery Failure / Jump Start' },
-  { icon: '🔑', label: "Engine Won't Start" },
-  { icon: '🚧', label: 'Breakdown (Unknown Issue)' },
-  { icon: '🌡️', label: 'Overheating' },
-  { icon: '🛑', label: 'Brake Problem' },
-  { icon: '⚡', label: 'Electrical Issue' },
-  { icon: '⛽', label: 'Fuel Issue (Wrong Fuel / Empty)' },
-  { icon: '🚛', label: 'Vehicle Recovery / Towing' },
-  { icon: '🔧', label: 'Diagnostic Check' },
-  { icon: '🔒', label: 'Locked Out of Vehicle' },
-  { icon: '📋', label: 'Other (Describe in Notes)' },
-];
-
-function PostJob({ setTab, profileComplete, prefilledVehicle }: { setTab: (t: string) => void; profileComplete: boolean; prefilledVehicle?: any }) {
-  const [jobMode, setJobMode] = useState<'EMERGENCY' | 'SCHEDULABLE'>('EMERGENCY');
-  const [fromDate, setFromDate] = useState('');
-  const [fromTime, setFromTime] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [toTime, setToTime] = useState('');
-  const [priority, setPriority] = useState('HIGH');
-  const [locationQuery, setLocationQuery] = useState('');
-  const [locationFocused, setLocationFocused] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState('');
-  const [jobType, setJobType] = useState('');
-  const [jobTypeOpen, setJobTypeOpen] = useState(false);
-  const [vehicleReg, setVehicleReg] = useState(prefilledVehicle?.reg || 'CA 456-789');
-  const [vehicleMake, setVehicleMake] = useState(prefilledVehicle ? `${prefilledVehicle.make} ${prefilledVehicle.model}` : '');
-  const [trailerMake, setTrailerMake] = useState('');
-  const [tyreSize, setTyreSize] = useState('');
-  const [tyreSide, setTyreSide] = useState('');
-  const [tyreAxle, setTyreAxle] = useState('');
-  const [driverName, setDriverName] = useState('');
-  const [driverNumber, setDriverNumber] = useState('');
-  const [notes, setNotes] = useState('');
-  const [photos, setPhotos] = useState<string[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const locationRef = useRef<HTMLDivElement>(null);
-  const jobTypeRef = useRef<HTMLDivElement>(null);
-
-  const filteredAddresses = locationQuery.length >= 2
-    ? UK_ADDRESSES.filter(a => a.toLowerCase().includes(locationQuery.toLowerCase()))
-    : UK_ADDRESSES.slice(0, 5);
-
-  const showLocationDropdown = locationFocused && !selectedLocation;
-  const isTyreJob = jobType === 'Flat / Damaged Tyre';
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (jobTypeRef.current && !jobTypeRef.current.contains(e.target as Node)) setJobTypeOpen(false);
-      if (locationRef.current && !locationRef.current.contains(e.target as Node)) setLocationFocused(false);
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = ev => {
-        if (ev.target?.result) setPhotos(prev => [...prev, ev.target!.result as string]);
-      };
-      reader.readAsDataURL(file);
-    });
-    e.target.value = '';
-  }
-
-  // ── Profile gate ──────────────────────────────────────────────────────────────
-  if (!profileComplete) {
-    const missing = [
-      { section: 'Company Details', fields: 'Company name, Reg number, VAT number' },
-      { section: 'Contact Person', fields: 'Name, role, phone, email' },
-      { section: 'Billing & Payment', fields: 'Card number, expiry, CCV' },
-    ];
-    return (
-      <div className="h-full bg-[#080808] flex flex-col">
-        {/* Header */}
-        <div className="px-5 pt-4 pb-3 border-b border-[#1a1a1a] flex-shrink-0">
-          <h2 className="text-white font-black text-xl tracking-tight">Post Job</h2>
-          <p className="text-gray-600 text-[12px] mt-0.5">Get mechanics responding in minutes</p>
-        </div>
-
-        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-5">
-          {/* Icon */}
-          <div className="w-16 h-16 rounded-2xl bg-yellow-400/10 border border-yellow-400/30 flex items-center justify-center">
-            <AlertCircle className="w-8 h-8 text-yellow-400" />
-          </div>
-
-          <div>
-            <p className="text-white font-black text-base tracking-tight mb-1.5">Complete your profile first</p>
-            <p className="text-gray-500 text-[12px] leading-relaxed">
-              Before posting a job you must fill in all required profile details so mechanics and billing can be processed correctly.
-            </p>
-          </div>
-
-          {/* Missing sections checklist */}
-          <div className="w-full bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-[#1a1a1a]">
-              <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Required sections</p>
-            </div>
-            <div className="divide-y divide-[#1a1a1a]">
-              {missing.map(({ section, fields }) => (
-                <div key={section} className="px-4 py-3 flex items-start gap-3">
-                  <div className="w-4 h-4 rounded-full border-2 border-red-500/60 flex-shrink-0 mt-0.5" />
-                  <div className="text-left">
-                    <p className="text-white text-[12px] font-semibold">{section}</p>
-                    <p className="text-gray-600 text-[10px] mt-0.5">{fields}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <button
-            onClick={() => setTab('edit-profile')}
-            className="w-full bg-yellow-400 text-black py-4 rounded-xl font-black text-sm tracking-widest uppercase active:scale-[0.98] transition-transform"
-          >
-            Complete Profile →
-          </button>
-          <p className="text-gray-700 text-[10px]">You will be redirected back here once saved.</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Normal Post Job form ──────────────────────────────────────────��────────────
-  return (
-    <div className="h-full bg-[#080808] flex flex-col">
-      <div className="px-5 pt-4 pb-3 border-b border-[#1a1a1a] flex-shrink-0">
-        <h2 className="text-white font-black text-xl tracking-tight">Post Job</h2>
-        <p className="text-gray-600 text-[12px] mt-0.5">Fill in details to find a mechanic fast</p>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5" style={{ scrollbarWidth: 'none' }}>
-
-        {/* ─�� 1. Emergency / Schedulable ─── */}
-        <div className="space-y-2">
-          <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Job Mode</label>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setJobMode('EMERGENCY')}
-              className={`py-3.5 px-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${jobMode === 'EMERGENCY' ? 'border-red-500 bg-red-500/10' : 'border-[#1e1e1e] bg-[#0f0f0f]'}`}
-            >
-              <span className="text-xl">🚨</span>
-              <span className={`text-[11px] font-black uppercase tracking-wide ${jobMode === 'EMERGENCY' ? 'text-red-400' : 'text-gray-600'}`}>Emergency</span>
-              <span className={`text-[9px] ${jobMode === 'EMERGENCY' ? 'text-red-400/70' : 'text-gray-700'}`}>Dispatch now</span>
-            </button>
-            <button
-              onClick={() => setJobMode('SCHEDULABLE')}
-              className={`py-3.5 px-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${jobMode === 'SCHEDULABLE' ? 'border-yellow-400 bg-yellow-400/10' : 'border-[#1e1e1e] bg-[#0f0f0f]'}`}
-            >
-              <span className="text-xl">📅</span>
-              <span className={`text-[11px] font-black uppercase tracking-wide ${jobMode === 'SCHEDULABLE' ? 'text-yellow-400' : 'text-gray-600'}`}>Schedulable</span>
-              <span className={`text-[9px] ${jobMode === 'SCHEDULABLE' ? 'text-yellow-400/70' : 'text-gray-700'}`}>Pick date & time</span>
-            </button>
-          </div>
-
-          {/* Date/time picker — Schedulable only */}
-          {jobMode === 'SCHEDULABLE' && (
-            <div className="bg-[#0f0f0f] border border-yellow-400/20 rounded-xl p-4 space-y-3 mt-1">
-              <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Truck Available Window</p>
-              <div>
-                <p className="text-gray-600 text-[10px] font-semibold uppercase tracking-widest mb-1.5">From</p>
-                <div className="flex gap-2">
-                  <div className="flex-1 relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600 pointer-events-none" />
-                    <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl pl-8 pr-2 py-2.5 text-white focus:outline-none focus:border-yellow-400/60 text-[12px] [color-scheme:dark]" />
-                  </div>
-                  <div className="flex-1 relative">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600 pointer-events-none" />
-                    <input type="time" value={fromTime} onChange={e => setFromTime(e.target.value)}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl pl-8 pr-2 py-2.5 text-white focus:outline-none focus:border-yellow-400/60 text-[12px] [color-scheme:dark]" />
-                  </div>
-                </div>
-              </div>
-              <div>
-                <p className="text-gray-600 text-[10px] font-semibold uppercase tracking-widest mb-1.5">
-                  To <span className="normal-case text-gray-700">(optional)</span>
-                </p>
-                <div className="flex gap-2">
-                  <div className="flex-1 relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600 pointer-events-none" />
-                    <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl pl-8 pr-2 py-2.5 text-white focus:outline-none focus:border-yellow-400/60 text-[12px] [color-scheme:dark]" />
-                  </div>
-                  <div className="flex-1 relative">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600 pointer-events-none" />
-                    <input type="time" value={toTime} onChange={e => setToTime(e.target.value)}
-                      className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl pl-8 pr-2 py-2.5 text-white focus:outline-none focus:border-yellow-400/60 text-[12px] [color-scheme:dark]" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ── 2. Vehicle Details ─── */}
-        <div className="space-y-2.5">
-          <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Vehicle Details</label>
-
-          {/* Reg text input */}
-          <div>
-            <p className="text-gray-700 text-[10px] uppercase tracking-widest mb-1.5">Registration</p>
-            <input
-              type="text"
-              value={vehicleReg}
-              onChange={e => setVehicleReg(e.target.value)}
-              placeholder="e.g. CA 456-789"
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-[13px] uppercase"
-            />
-          </div>
-
-          {/* Make & model */}
-          <div>
-            <p className="text-gray-700 text-[10px] uppercase tracking-widest mb-1.5">Vehicle Make & Model</p>
-            <input
-              type="text"
-              value={vehicleMake}
-              onChange={e => setVehicleMake(e.target.value)}
-              placeholder="e.g. Mercedes Actros 2645, Volvo FH16…"
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-[13px]"
-            />
-          </div>
-
-          {/* Trailer — optional */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <p className="text-gray-700 text-[10px] uppercase tracking-widest">Trailer Make & Model</p>
-              <span className="text-gray-700 text-[10px]">Optional</span>
-            </div>
-            <input
-              type="text"
-              value={trailerMake}
-              onChange={e => setTrailerMake(e.target.value)}
-              placeholder="e.g. Henred Fruehauf, SA Truck Bodies…"
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-[13px]"
-            />
-          </div>
-        </div>
-
-        {/* ── 3. Job Category dropdown ─── */}
-        <div className="space-y-1.5" ref={jobTypeRef}>
-          <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Job Category</label>
-          <button
-            onClick={() => setJobTypeOpen(o => !o)}
-            className={`w-full bg-[#111] border rounded-xl px-4 py-3 flex items-center justify-between text-left transition-colors ${jobTypeOpen ? 'border-yellow-400/60' : 'border-[#2a2a2a]'}`}
-          >
-            <span className={`text-[13px] ${jobType ? 'text-white' : 'text-gray-700'}`}>
-              {jobType ? `${JOB_TYPES.find(j => j.label === jobType)?.icon}  ${jobType}` : 'Select job category…'}
-            </span>
-            <ChevronDown className={`w-4 h-4 text-gray-600 transition-transform flex-shrink-0 ${jobTypeOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {jobTypeOpen && (
-            <div className="bg-[#111] border border-[#2a2a2a] rounded-xl overflow-hidden shadow-xl">
-              {JOB_TYPES.map(({ icon, label }) => (
-                <button
-                  key={label}
-                  onClick={() => { setJobType(label); setJobTypeOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-[#1a1a1a] last:border-0 transition-colors hover:bg-[#1a1a1a] ${jobType === label ? 'bg-yellow-400/10' : ''}`}
-                >
-                  <span className="text-base w-6 text-center">{icon}</span>
-                  <span className={`text-[13px] font-semibold ${jobType === label ? 'text-yellow-400' : 'text-gray-400'}`}>{label}</span>
-                  {jobType === label && <Check className="w-3.5 h-3.5 text-yellow-400 ml-auto flex-shrink-0" />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── 3b. Tyre Details — only when Flat / Damaged Tyre is selected ── */}
-        {isTyreJob && (
-          <div className="bg-[#0f0f0f] border border-yellow-400/20 rounded-xl p-4 space-y-4">
-            <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">🛞 Tyre Details</p>
-
-            {/* Tyre Size */}
-            <div>
-              <p className="text-gray-600 text-[10px] uppercase tracking-widest mb-1.5">Tyre Size</p>
-              <input
-                type="text"
-                value={tyreSize}
-                onChange={e => setTyreSize(e.target.value)}
-                placeholder="e.g. 295/80 R22.5, 315/70 R22.5…"
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-[13px]"
-              />
-            </div>
-
-            {/* Side */}
-            <div>
-              <p className="text-gray-600 text-[10px] uppercase tracking-widest mb-2">Side</p>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[
-                  { id: 'NS',   label: 'Near Side', sub: 'Left / Kerb'  },
-                  { id: 'OS',   label: 'Off Side',  sub: 'Right / Road' },
-                  { id: 'BOTH', label: 'Both',      sub: 'NS & OS'      },
-                ].map(opt => (
-                  <button
-                    key={opt.id}
-                    onClick={() => setTyreSide(opt.id)}
-                    className={`py-2.5 px-2 rounded-xl border flex flex-col items-center gap-0.5 transition-all ${tyreSide === opt.id ? 'border-yellow-400 bg-yellow-400/10' : 'border-[#2a2a2a] bg-[#111]'}`}
-                  >
-                    <span className={`text-[11px] font-black uppercase tracking-wide ${tyreSide === opt.id ? 'text-yellow-400' : 'text-gray-500'}`}>{opt.label}</span>
-                    <span className={`text-[9px] ${tyreSide === opt.id ? 'text-yellow-400/60' : 'text-gray-700'}`}>{opt.sub}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Axle Position — free text input */}
-            <div>
-              <p className="text-gray-600 text-[10px] uppercase tracking-widest mb-2">Axle Position</p>
-              <input
-                type="text"
-                value={tyreAxle}
-                onChange={e => setTyreAxle(e.target.value)}
-                placeholder="e.g. Steer, Drive 1, Drive 2, Tag, Trailer 1…"
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-[13px]"
-              />
-              <p className="text-gray-700 text-[10px] mt-1">Type the axle — e.g. "Drive 1", "Steer", "Trailer 2"</p>
-            </div>
-
-            {/* Summary — shows when both side + axle are filled */}
-            {tyreSide && tyreAxle && (
-              <div className="flex items-center gap-3 bg-yellow-400/5 border border-yellow-400/20 rounded-xl px-3 py-2.5">
-                <span className="text-xl flex-shrink-0">🛞</span>
+        return (
+          <div className="absolute inset-0 bg-black/80 flex items-end z-50 animate-in fade-in duration-200">
+            <div className="w-full bg-[#0a0a0a] rounded-t-3xl border-t border-[#1a1a1a] max-h-[70%] flex flex-col animate-in slide-in-from-bottom duration-300">
+              <div className="px-5 pt-4 pb-3 border-b border-[#1a1a1a] flex items-center justify-between flex-shrink-0">
                 <div>
-                  <p className="text-yellow-400 text-[11px] font-black">
-                    {tyreSide === 'NS' ? 'Near Side (Left)' : tyreSide === 'OS' ? 'Off Side (Right)' : 'Both Sides'}
-                    {' · '}{tyreAxle}
-                  </p>
-                  {tyreSize && <p className="text-gray-500 text-[10px] mt-0.5">Size: {tyreSize}</p>}
+                  <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Invoice</p>
+                  <h3 className="text-white font-black text-base">INV-{invoiceJob.id}</h3>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── 4. Location ─── */}
-        <div className="space-y-2" ref={locationRef}>
-          <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Breakdown Location</label>
-
-          {/* Search input */}
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
-            <input
-              type="text"
-              value={selectedLocation || locationQuery}
-              onChange={e => { setSelectedLocation(''); setLocationQuery(e.target.value); }}
-              onFocus={() => setLocationFocused(true)}
-              placeholder="Type a street, highway or landmark…"
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl pl-10 pr-10 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-[13px]"
-            />
-            {(selectedLocation || locationQuery) && (
-              <button
-                onClick={() => { setSelectedLocation(''); setLocationQuery(''); }}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#2a2a2a] flex items-center justify-center"
-              >
-                <X className="w-3 h-3 text-gray-400" />
-              </button>
-            )}
-          </div>
-
-          {/* Address suggestions dropdown */}
-          {showLocationDropdown && (
-            <div className="bg-[#111] border border-[#2a2a2a] rounded-xl overflow-hidden shadow-xl">
-              {filteredAddresses.length === 0 ? (
-                <div className="px-4 py-3 text-gray-600 text-[12px]">No results found</div>
-              ) : (
-                filteredAddresses.map(addr => (
-                  <button
-                    key={addr}
-                    onMouseDown={() => { setSelectedLocation(addr); setLocationQuery(''); setLocationFocused(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 border-b border-[#1a1a1a] last:border-0 hover:bg-[#1a1a1a] text-left transition-colors"
-                  >
-                    <MapPin className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" />
-                    <span className="text-gray-300 text-[12px]">{addr}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-
-          {/* Use GPS button */}
-          <button
-            onClick={() => { setSelectedLocation('N1 Highway, km 184 — Current GPS Position, GP'); setLocationQuery(''); setLocationFocused(false); }}
-            className="w-full flex items-center gap-3 bg-[#0f0f0f] border border-[#1e1e1e] rounded-xl px-4 py-2.5 hover:border-yellow-400/30 transition-colors"
-          >
-            <div className="w-7 h-7 bg-yellow-400/10 border border-yellow-400/20 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Crosshair className="w-3.5 h-3.5 text-yellow-400" />
-            </div>
-            <div className="text-left">
-              <p className="text-white text-[12px] font-semibold">Use my current location</p>
-              <p className="text-gray-600 text-[10px]">GPS · 25.8°S, 28.2°E</p>
-            </div>
-          </button>
-
-          {/* Map preview when location is set */}
-          {selectedLocation && <MapPreview height={120} />}
-        </div>
-
-        {/* ── 5. Driver Details ─── */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Driver Details</label>
-            <span className="text-gray-700 text-[10px]">Optional</span>
-          </div>
-          <div className="flex gap-2">
-            <div className="flex-1 relative">
-              <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
-              <input
-                type="text"
-                value={driverName}
-                onChange={e => setDriverName(e.target.value)}
-                placeholder="Driver name"
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl pl-9 pr-3 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-[13px]"
-              />
-            </div>
-            <div className="flex-1 relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
-              <input
-                type="tel"
-                value={driverNumber}
-                onChange={e => setDriverNumber(e.target.value)}
-                placeholder="+27 82 000 0000"
-                className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl pl-9 pr-3 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-[13px]"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ── 6. Photo Upload ─── */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Photos</label>
-            <span className="text-gray-700 text-[10px]">Optional · up to 5</span>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                if (fileInputRef.current) {
-                  fileInputRef.current.setAttribute('capture', 'environment');
-                  fileInputRef.current.click();
-                }
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-3 bg-[#0f0f0f] border border-[#1e1e1e] rounded-xl hover:border-yellow-400/30 active:bg-[#1a1a1a] transition-colors"
-            >
-              <Camera className="w-4 h-4 text-yellow-400" />
-              <span className="text-gray-400 text-[12px] font-semibold">Camera</span>
-            </button>
-            <button
-              onClick={() => {
-                if (fileInputRef.current) {
-                  fileInputRef.current.removeAttribute('capture');
-                  fileInputRef.current.click();
-                }
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-3 bg-[#0f0f0f] border border-[#1e1e1e] rounded-xl hover:border-yellow-400/30 active:bg-[#1a1a1a] transition-colors"
-            >
-              <ImageIcon className="w-4 h-4 text-yellow-400" />
-              <span className="text-gray-400 text-[12px] font-semibold">Gallery</span>
-            </button>
-            <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
-          </div>
-          {photos.length > 0 ? (
-            <div className="flex gap-2 flex-wrap">
-              {photos.map((src, i) => (
-                <div key={i} className="relative w-[72px] h-[72px] rounded-xl overflow-hidden border border-[#2a2a2a]">
-                  <img src={src} alt={`photo-${i}`} className="w-full h-full object-cover" />
-                  <button
-                    onClick={() => setPhotos(prev => prev.filter((_, idx) => idx !== i))}
-                    className="absolute top-1 right-1 w-4 h-4 bg-black/70 rounded-full flex items-center justify-center"
-                  >
-                    <X className="w-2.5 h-2.5 text-white" />
-                  </button>
-                </div>
-              ))}
-              {photos.length < 5 && (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-[72px] h-[72px] rounded-xl border border-dashed border-[#2a2a2a] flex items-center justify-center hover:border-yellow-400/40 transition-colors"
-                >
-                  <PlusCircle className="w-5 h-5 text-gray-700" />
+                <button onClick={() => setInvoiceJob(null)} className="w-8 h-8 rounded-xl bg-[#111] border border-[#2a2a2a] flex items-center justify-center">
+                  <X className="w-4 h-4 text-gray-400" />
                 </button>
-              )}
-            </div>
-          ) : (
-            <div className="h-[72px] rounded-xl border border-dashed border-[#1e1e1e] flex items-center justify-center gap-2">
-              <ImageIcon className="w-4 h-4 text-gray-700" />
-              <span className="text-gray-700 text-[11px]">No photos added yet</span>
-            </div>
-          )}
-          <p className="text-gray-700 text-[10px]">Helps mechanics diagnose before arriving on site</p>
-        </div>
-
-        {/* ── 7. Notes ─── */}
-        <div className="space-y-1.5">
-          <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Notes</label>
-          <textarea
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            placeholder="Describe the problem in detail — symptoms, warning lights, sounds, what happened before breakdown…"
-            rows={4}
-            className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-sm resize-none"
-          />
-          <p className="text-gray-700 text-[10px] text-right">{notes.length} / 500</p>
-        </div>
-
-        {/* ── 9. Payment Pre-Auth ─── */}
-        <div className="bg-[#0f0f0f] rounded-xl p-4 border border-[#1a1a1a]">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-white text-[12px] font-black">Payment Pre-Auth</p>
-            <span className="text-yellow-400 text-[12px] font-black">£220</span>
-          </div>
-          <div className="h-2 bg-[#1a1a1a] rounded-full overflow-hidden mb-1.5">
-            <div className="h-full bg-yellow-400 rounded-full" style={{ width: '50%' }} />
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600 text-[10px]">£50</span>
-            <span className="text-gray-600 text-[10px]">£450</span>
-          </div>
-          <div className="mt-2.5 flex items-center gap-2">
-            <CreditCard className="w-3.5 h-3.5 text-gray-600" />
-            <span className="text-gray-500 text-[11px]">VISA •••• 4891 · Held until completion</span>
-          </div>
-        </div>
-
-      </div>
-
-      {/* Footer CTA */}
-      <div className="px-5 pb-5 pt-3 border-t border-[#1a1a1a] flex-shrink-0 space-y-2.5">
-        <PrimaryBtn onClick={() => setTab('tracking')}>
-          {jobMode === 'EMERGENCY' ? '🚨 Post Emergency Job' : '📅 Schedule Job'}
-        </PrimaryBtn>
-        <p className="text-gray-700 text-[10px] text-center">
-          {jobMode === 'EMERGENCY'
-            ? 'Mechanics will respond within minutes. Your job is now live.'
-            : 'Mechanics will be notified and can quote on your scheduled window.'}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Job Tracking ────────────────────────────────────────────────────────────────
-const STATUS_FLOW = ['posted', 'assigned', 'en_route', 'arrived', 'in_progress', 'completed'] as const;
-type JobStatus = typeof STATUS_FLOW[number];
-
-const TIMELINE_STEPS: { key: JobStatus; label: string; time: string }[] = [
-  { key: 'posted',      label: 'Posted',      time: '14:32' },
-  { key: 'assigned',    label: 'Assigned',    time: '14:38' },
-  { key: 'en_route',    label: 'En Route',    time: '14:41' },
-  { key: 'arrived',     label: 'Arrived',     time: 'ETA 14:58' },
-  { key: 'in_progress', label: 'In Progress', time: '—' },
-  { key: 'completed',   label: 'Completed',   time: '—' },
-];
-
-const PAYMENT_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  authorised: { label: 'Authorised',          color: 'text-orange-400', bg: 'bg-orange-400/10 border-orange-400/30' },
-  paid:       { label: 'Paid',                color: 'text-green-400',  bg: 'bg-green-400/10 border-green-400/30'  },
-  refunded:   { label: 'Refunded',            color: 'text-blue-400',   bg: 'bg-blue-400/10 border-blue-400/30'   },
-  released:   { label: 'Released to Mechanic',color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30' },
-};
-
-// ─── Fleet Tracking List ─────────────────────────────────────────────────────────
-type TrackStatus = 'posted' | 'assigned' | 'en_route' | 'on_site';
-type FleetJob = {
-  id: string; truck: string; issue: string; status: TrackStatus;
-  mechanic: string | null; eta: string | null; pay: string; ago: string;
-  jobKind: 'emergency' | 'scheduled';
-  quoteAgreed?: boolean;   // emergency: fee applies once quote agreed + mechanic assigned
-  scheduledFor?: string;   // scheduled: ISO date — fee if <24 hrs away
-};
-
-// Computed once so the 24-hr window logic works live in the demo
-const _30hFromNow = new Date(Date.now() + 30 * 3_600_000).toISOString(); // >24 hrs → free
-const _6hFromNow  = new Date(Date.now() +  6 * 3_600_000).toISOString(); // <24 hrs → 10% fee
-
-const FLEET_JOBS: FleetJob[] = [
-  { id: 'TF-8821', truck: 'Tautliner · CA 456-789',   issue: 'Engine overheating — M1 near Birmingham',   status: 'posted',   mechanic: null,        eta: null,     pay: '£165', ago: '4 min ago',  jobKind: 'emergency', quoteAgreed: false },
-  { id: 'TF-8819', truck: 'Rigid Truck · GP 112-033', issue: 'Left rear tyre blowout — M6 services',  status: 'assigned', mechanic: 'Tom S.',  eta: null,     pay: '£95',  ago: '18 min ago', jobKind: 'scheduled', scheduledFor: _30hFromNow },
-  { id: 'TF-8822', truck: 'Tanker · KZN 78-99',       issue: 'Air brake fault — A1 Leeds',       status: 'en_route', mechanic: 'James M.', eta: '12 min', pay: '£310', ago: '35 min ago', jobKind: 'scheduled', scheduledFor: _6hFromNow  },
-  { id: 'TF-8814', truck: 'Semi · WC 234-567',        issue: 'Fuel leak suspected — M25 London', status: 'on_site',  mechanic: 'Paul K.',  eta: null,     pay: '£185', ago: '1 hr ago',   jobKind: 'emergency', quoteAgreed: true  },
-];
-
-const TRACK_CFG: Record<TrackStatus, { label: string; shortLabel: string; dot: string; text: string; badge: string; pulse: boolean }> = {
-  posted:   { label: 'Posted — Awaiting Mechanic', shortLabel: 'Posted',   dot: 'bg-red-400',    text: 'text-red-400',    badge: 'bg-red-400/10    border-red-400/30',    pulse: true  },
-  assigned: { label: 'Assigned',                   shortLabel: 'Assigned', dot: 'bg-blue-400',   text: 'text-blue-400',   badge: 'bg-blue-400/10   border-blue-400/30',   pulse: false },
-  en_route: { label: 'En Route',                   shortLabel: 'En Route', dot: 'bg-orange-400', text: 'text-orange-400', badge: 'bg-orange-400/10 border-orange-400/30', pulse: true  },
-  on_site:  { label: 'On Site',                    shortLabel: 'On Site',  dot: 'bg-green-400',  text: 'text-green-400',  badge: 'bg-green-400/10  border-green-400/30',  pulse: true  },
-};
-
-function JobTracking({ setTab }: { setTab: (t: string) => void }) {
-  const [cancelJob, setCancelJob] = useState<FleetJob | null>(null);
-
-  // ── Cancellation fee rules ──────────────────────────────────────────────
-  // Emergency: 10% once mechanic is en route (on the way)
-  // Scheduled: free if >24 hrs away; 10% if <24 hrs away
-  const hoursUntil = (iso: string) => (new Date(iso).getTime() - Date.now()) / 3_600_000;
-  const hasFee = (job: FleetJob): boolean => {
-    if (job.status === 'en_route' || job.status === 'on_site') return true; // mechanic on the way or arrived — fee always applies
-    if (job.jobKind === 'emergency') return false; // emergency jobs: free cancellation until mechanic is en route
-    return job.scheduledFor ? hoursUntil(job.scheduledFor) < 24 : false;
-  };
-  const feeAmount  = (job: FleetJob) => `£${Math.round(parseFloat(job.pay.replace('£', '')) * 0.1)}`;
-  const canCancel  = (s: TrackStatus) => s !== 'on_site';
-
-  return (
-    <div className="h-full bg-[#080808] flex flex-col relative">
-
-      {/* ── Cancel Modal ── */}
-      {cancelJob && (
-        <div className="absolute inset-0 bg-black/85 z-50 flex items-end p-5">
-          <div className="w-full bg-[#111] rounded-2xl p-5 border border-[#2a2a2a]">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-9 h-9 rounded-xl bg-red-500/15 flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-5 h-5 text-red-400" />
               </div>
-              <div className="flex-1">
-                <p className="text-white font-black text-base mb-1">Cancel {cancelJob.id}?</p>
-                <p className="text-white text-[12px] mb-1.5">{cancelJob.truck}</p>
-                {hasFee(cancelJob) ? (
-                  cancelJob.jobKind === 'emergency' ? (
-                    <p className="text-gray-300 text-[12px] leading-relaxed">
-                      The mechanic is <span className="text-orange-400 font-semibold">on the way</span>. A <span className="text-red-400 font-semibold">10% cancellation fee ({feeAmount(cancelJob)})</span> applies for emergency jobs once the mechanic is en route.
-                    </p>
-                  ) : (
-                    <p className="text-gray-300 text-[12px] leading-relaxed">
-                      Your booking is <span className="text-orange-400 font-semibold">less than 24 hours away</span>. A <span className="text-red-400 font-semibold">10% late-cancellation fee ({feeAmount(cancelJob)})</span> applies.
-                    </p>
-                  )
-                ) : (
-                  <p className="text-gray-300 text-[12px] leading-relaxed">
-                    {cancelJob.status === 'posted' 
-                      ? 'No mechanic assigned yet — free cancellation.'
-                      : 'Mechanic has not started journey — free cancellation.'}
-                  </p>
-                )}
-              </div>
-            </div>
-            {hasFee(cancelJob) && (
-              <div className="bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-2.5 mb-4 flex items-center gap-2.5">
-                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                <p className="text-red-400 text-[11px] font-semibold">10% cancellation fee · {feeAmount(cancelJob)} · Non-refundable</p>
-              </div>
-            )}
-            <div className="space-y-2">
-              <button onClick={() => setCancelJob(null)} className="w-full bg-red-500 text-white py-3.5 rounded-xl font-black text-[13px] tracking-wide">
-                {hasFee(cancelJob) ? `Confirm Cancellation (${feeAmount(cancelJob)} fee)` : 'Confirm Cancellation — Free'}
-              </button>
-              <button onClick={() => setCancelJob(null)} className="w-full border border-[#2a2a2a] text-gray-300 py-3.5 rounded-xl font-semibold text-[13px]">
-                Keep Job Active
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* ── Header ── */}
-      <div className="px-5 pt-4 pb-3 border-b border-[#1a1a1a] flex-shrink-0">
-        <h2 className="text-white font-black text-xl tracking-tight">Job Tracking</h2>
-        <p className="text-gray-500 text-[11px] mt-0.5">{FLEET_JOBS.length} active jobs</p>
-      </div>
-
-      {/* ── Job Cards ── */}
-      <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3" style={{ scrollbarWidth: 'none' }}>
-        {FLEET_JOBS.map(job => {
-          const cfg = TRACK_CFG[job.status];
-          return (
-            <div key={job.id} className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] overflow-hidden">
-              <div className="flex">
-                {/* Left status accent bar */}
-                <div className={`w-1 flex-shrink-0 ${cfg.dot}`} />
-                <div className="flex-1 p-4">
-
-                  {/* Top row — job ID + status badge */}
-                  <div className="flex items-start justify-between mb-1.5">
-                    <div className="flex-1 min-w-0 pr-2">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-gray-500 text-[10px] font-mono">{job.id}</span>
-                        <span className="text-gray-600 text-[10px]">·</span>
-                        <span className="text-gray-500 text-[10px]">{job.ago}</span>
-                      </div>
-                      <p className="text-white font-black text-[13px]">{job.truck}</p>
-                    </div>
-                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[9px] font-black uppercase tracking-wide flex-shrink-0 ${cfg.badge} ${cfg.text}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot} ${cfg.pulse ? 'animate-pulse' : ''}`} />
-                      {cfg.shortLabel}
-                    </div>
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+                {/* Invoice info */}
+                <div className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] p-4 space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-[11px]">Job ID</span>
+                    <span className="text-white text-[11px] font-semibold font-mono">{invoiceJob.id}</span>
                   </div>
-
-                  {/* Issue */}
-                  <p className="text-white text-[12px] mb-3 line-clamp-1">{job.issue}</p>
-
-                  {/* Mechanic + ETA + pay */}
-                  <div className="flex items-center justify-between mb-3">
-                    {job.mechanic ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 bg-[#1a1a1a] rounded-full flex items-center justify-center">
-                          <Wrench className="w-2.5 h-2.5 text-gray-500" />
-                        </div>
-                        <span className="text-gray-300 text-[11px] font-semibold">{job.mechanic}</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 bg-[#1a1a1a] rounded-full flex items-center justify-center">
-                          <Clock className="w-2.5 h-2.5 text-gray-600" />
-                        </div>
-                        <span className="text-gray-500 text-[11px]">Awaiting mechanic…</span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-3">
-                      {job.eta && (
-                        <div className="flex items-center gap-1">
-                          <Navigation className="w-3 h-3 text-orange-400" />
-                          <span className="text-orange-400 text-[11px] font-black">{job.eta}</span>
-                        </div>
-                      )}
-                      <span className="text-yellow-400 font-black text-sm">{job.pay}</span>
-                    </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-[11px]">Date</span>
+                    <span className="text-white text-[11px] font-semibold">{invoiceJob.date}</span>
                   </div>
-
-                  {/* Action row */}
-                  <div className="flex gap-2 pt-2.5 border-t border-[#1a1a1a]">
-                    <button
-                      onClick={() => setTab('tracking-detail')}
-                      className="flex-1 bg-[#111] border border-[#2a2a2a] rounded-lg py-2 text-[11px] font-semibold text-gray-300 hover:border-yellow-400/30 transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <MapPin className="w-3 h-3 text-yellow-400" /> Track Job
-                    </button>
-                    {canCancel(job.status) ? (
-                      <button
-                        onClick={() => setCancelJob(job)}
-                        className={`flex-1 rounded-lg py-2 text-[11px] font-semibold border flex items-center justify-center gap-1.5 transition-colors ${
-                          hasFee(job)
-                            ? 'border-red-500/40 text-red-400 bg-red-500/5 hover:bg-red-500/10'
-                            : 'border-[#2a2a2a] text-gray-400 hover:border-red-500/30 hover:text-red-400'
-                        }`}
-                      >
-                        <X className="w-3 h-3" />
-                        {job.status === 'en_route' ? 'Cancel' : hasFee(job) ? `Cancel · ${feeAmount(job)}` : 'Cancel · Free'}
-                      </button>
-                    ) : (
-                      <div className="flex-1 rounded-lg py-2 text-[11px] font-semibold border border-[#1a1a1a] text-gray-600 flex items-center justify-center gap-1.5">
-                        <CheckCircle className="w-3 h-3" /> Mechanic on site
-                      </div>
-                    )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-[11px]">Vehicle</span>
+                    <span className="text-white text-[11px] font-semibold">{invoiceJob.truck}</span>
                   </div>
-
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── Job Tracking Detail (single job) ────────────────────────────────────────────
-function JobTrackingDetail({ setTab }: { setTab: (t: string) => void }) {
-  const [jobStatus, setJobStatus] = useState<JobStatus>('en_route');
-  const [cancelModal, setCancelModal] = useState(false);
-  const [contactModal, setContactModal] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<'authorised' | 'paid' | 'refunded' | 'released'>('authorised');
-
-  // ── Rating state ──────────────────────────────────────────────
-  const [ratingModal, setRatingModal]       = useState(false);
-  const [ratingHover, setRatingHover]       = useState(0);
-  const [ratingValue, setRatingValue]       = useState(0);
-  const [ratingComment, setRatingComment]   = useState('');
-  const [ratingSubmitted, setRatingSubmitted] = useState(false);
-
-  const submitRating = () => {
-    if (ratingValue === 0) return;
-    setRatingSubmitted(true);
-    setTimeout(() => setRatingModal(false), 1800);
-  };
-
-  const currentIdx             = STATUS_FLOW.indexOf(jobStatus);
-  const mechanicAssigned       = currentIdx >= 1;
-  const mechanicStartedJourney = currentIdx >= 2; // kept for reference
-
-  // ── Demo job: emergency, quote agreed, £310 ── 10% = £31 ──────────────
-  const isEmergencyJob = true;
-  const quoteAgreed    = true;
-  const detailQuote    = 310;
-  const detailFeeAmt   = `£${Math.round(detailQuote * 0.1)}`; // £31
-  const detailHasFee   =
-    jobStatus === 'en_route' || jobStatus === 'arrived' || jobStatus === 'in_progress'; // fee applies once mechanic is en route or beyond
-
-  const payment = PAYMENT_STATUS_CONFIG[paymentStatus];
-
-  return (
-    <div className="h-full bg-[#080808] flex flex-col relative">
-
-      {/* ── Cancel Modal ── */}
-      {cancelModal && (
-        <div className="absolute inset-0 bg-black/85 z-50 flex items-end p-5">
-          <div className="w-full bg-[#111] rounded-2xl p-5 border border-[#2a2a2a]">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-9 h-9 rounded-xl bg-red-500/15 flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-5 h-5 text-red-400" />
-              </div>
-              <div>
-                <p className="text-white font-black text-base mb-1">Cancel this job?</p>
-                {detailHasFee ? (
-                  <p className="text-gray-400 text-[12px] leading-relaxed">
-                    The mechanic is <span className="text-orange-400 font-semibold">on the way</span>. A{' '}
-                    <span className="text-red-400 font-semibold">10% cancellation fee ({detailFeeAmt})</span>{' '}
-                    applies for emergency jobs once the mechanic is en route.
-                  </p>
-                ) : (
-                  <p className="text-gray-400 text-[12px] leading-relaxed">
-                    {jobStatus === 'posted' 
-                      ? 'No mechanic assigned yet — free cancellation.'
-                      : 'Mechanic has not started journey — free cancellation.'}
-                  </p>
-                )}
-              </div>
-            </div>
-            {detailHasFee && (
-              <div className="bg-red-500/8 border border-red-500/20 rounded-xl px-4 py-2.5 mb-4 flex items-center gap-2.5">
-                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                <p className="text-red-400 text-[11px] font-semibold">10% cancellation fee · {detailFeeAmt} · Non-refundable</p>
-              </div>
-            )}
-            <div className="space-y-2">
-              <button
-                onClick={() => setCancelModal(false)}
-                className="w-full bg-red-500 text-white py-3.5 rounded-xl font-black text-[13px] tracking-wide"
-              >
-                {detailHasFee ? `Confirm Cancellation (${detailFeeAmt} fee)` : 'Confirm Cancellation — Free'}
-              </button>
-              <button
-                onClick={() => setCancelModal(false)}
-                className="w-full border border-[#2a2a2a] text-gray-400 py-3.5 rounded-xl font-semibold text-[13px]"
-              >
-                Keep Job Active
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Contact Modal ── */}
-      {contactModal && (
-        <div className="absolute inset-0 bg-black/85 z-50 flex items-end p-5">
-          <div className="w-full bg-[#111] rounded-2xl p-5 border border-[#2a2a2a]">
-            <div className="flex items-center gap-3 mb-4">
-              <img src={MECHANIC_IMG} alt="Mechanic" className="w-10 h-10 rounded-xl object-cover" />
-              <div>
-                <p className="text-white font-black text-sm">James Mitchell</p>
-                <p className="text-gray-500 text-[11px]">+44 7734 567 890</p>
-              </div>
-              <button onClick={() => setContactModal(false)} className="ml-auto w-7 h-7 rounded-lg bg-[#1a1a1a] flex items-center justify-center">
-                <X className="w-3.5 h-3.5 text-gray-500" />
-              </button>
-            </div>
-            <div className="space-y-2">
-              <a href="tel:+447734567890" className="w-full bg-yellow-400 text-black py-3.5 rounded-xl font-black text-[13px] tracking-wide flex items-center justify-center gap-2">
-                <Phone className="w-4 h-4" /> Call Mechanic
-              </a>
-              <button className="w-full border border-[#2a2a2a] text-white py-3.5 rounded-xl font-semibold text-[13px] flex items-center justify-center gap-2">
-                <MessageCircle className="w-4 h-4 text-gray-400" /> Send Message
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Rating Modal ── */}
-      {ratingModal && (
-        <div className="absolute inset-0 z-50 bg-black/80 flex items-end" onClick={() => !ratingSubmitted && setRatingModal(false)}>
-          <div
-            className="w-full bg-[#0e0e0e] rounded-t-3xl border-t border-[#2a2a2a] px-5 pt-5 pb-8"
-            onClick={e => e.stopPropagation()}
-          >
-            {ratingSubmitted ? (
-              <div className="flex flex-col items-center py-6">
-                <div className="relative mb-4">
-                  <div className="absolute inset-0 bg-green-400 rounded-full blur-[24px] opacity-25" />
-                  <div className="relative w-16 h-16 bg-[#0f0f0f] border-2 border-green-400 rounded-full flex items-center justify-center">
-                    <CheckCircle className="w-8 h-8 text-green-400" />
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-[11px]">Issue</span>
+                    <span className="text-white text-[11px] font-semibold">{invoiceJob.issue}</span>
                   </div>
-                </div>
-                <p className="text-white font-black text-lg mb-1">Review Submitted!</p>
-                <p className="text-gray-500 text-[12px] text-center">Thanks for rating James. Your feedback helps keep the network reliable.</p>
-              </div>
-            ) : (
-              <>
-                <div className="w-10 h-1 bg-[#2a2a2a] rounded-full mx-auto mb-5" />
-
-                {/* Mechanic row */}
-                <div className="flex items-center gap-3 mb-5">
-                  <img src={MECHANIC_IMG} alt="Mechanic" className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
-                  <div>
-                    <p className="text-white font-black text-sm">James Mitchell</p>
-                    <p className="text-gray-500 text-[11px]">Job TF-8821 · Engine overheating</p>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-[11px]">Mechanic</span>
+                    <span className="text-white text-[11px] font-semibold">{invoiceJob.mechanic}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-[11px]">Duration</span>
+                    <span className="text-white text-[11px] font-semibold">{invoiceJob.hours}</span>
                   </div>
                 </div>
 
-                {/* Stars */}
-                <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Your Rating</p>
-                <div className="flex items-center justify-center gap-3 mb-1">
-                  {[1,2,3,4,5].map(i => (
-                    <button
-                      key={i}
-                      onMouseEnter={() => setRatingHover(i)}
-                      onMouseLeave={() => setRatingHover(0)}
-                      onClick={() => setRatingValue(i)}
-                      className="active:scale-90 transition-transform"
-                    >
-                      <Star
-                        className={`w-10 h-10 transition-colors ${
-                          i <= (ratingHover || ratingValue)
-                            ? 'fill-yellow-400 text-yellow-400'
-                            : 'text-[#2a2a2a] fill-[#2a2a2a]'
-                        }`}
-                      />
-                    </button>
-                  ))}
+                {/* Cost breakdown */}
+                <div className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] p-4 space-y-2.5">
+                  <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Cost Breakdown</p>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-[11px]">Gross Amount</span>
+                    <span className="text-white text-[11px] font-semibold">£{invoiceJob.gross}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 text-[11px]">Platform Fee (12%)</span>
+                    <span className="text-gray-500 text-[11px]">-£{invoiceJob.gross - invoiceJob.net}</span>
+                  </div>
+                  <div className="pt-2.5 border-t border-[#2a2a2a] flex justify-between items-center">
+                    <span className="text-yellow-400 text-[12px] font-black uppercase tracking-wider">Net Payout</span>
+                    <span className="text-yellow-400 font-black text-xl">£{invoiceJob.net}</span>
+                  </div>
                 </div>
-                <p className="text-center text-gray-500 text-[12px] mb-5 h-4">
-                  {ratingValue === 1 ? 'Poor' : ratingValue === 2 ? 'Fair' : ratingValue === 3 ? 'Good' : ratingValue === 4 ? 'Very Good' : ratingValue === 5 ? 'Excellent!' : ''}
-                </p>
 
-                {/* Comment */}
-                <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-2">
-                  Comment <span className="text-gray-700 normal-case tracking-normal font-normal ml-1">Optional</span>
-                </p>
-                <textarea
-                  value={ratingComment}
-                  onChange={e => setRatingComment(e.target.value)}
-                  placeholder="Punctuality, quality of repair, professionalism..."
-                  rows={3}
-                  className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/50 text-[12px] resize-none mb-4"
-                />
+                {/* Rating */}
+                <div className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] p-4">
+                  <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-2">Rating</p>
+                  <div className="flex items-center gap-1">
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} className={`w-4 h-4 ${s <= invoiceJob.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-700'}`} />
+                    ))}
+                  </div>
+                </div>
+              </div>
 
-                <button
-                  onClick={submitRating}
-                  disabled={ratingValue === 0}
-                  className={`w-full py-4 rounded-xl font-black text-[13px] tracking-widest uppercase flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
-                    ratingValue > 0 ? 'bg-yellow-400 text-black' : 'bg-[#1a1a1a] text-gray-700 cursor-not-allowed'
-                  }`}
-                >
-                  <Star className="w-4 h-4" /> Submit Review
+              <div className="px-5 pb-6 pt-3 border-t border-[#1a1a1a] space-y-2.5 flex-shrink-0">
+                <button onClick={handleDownloadPDF} className="w-full bg-yellow-400 text-black py-4 rounded-xl font-black text-sm tracking-widest uppercase flex items-center justify-center gap-2">
+                  <Download className="w-4 h-4" />
+                  Download Invoice
                 </button>
-                <button onClick={() => setRatingModal(false)} className="w-full text-gray-600 text-[12px] py-2 mt-1">
-                  Not now
+                <button onClick={() => setInvoiceJob(null)} className="w-full py-3 text-gray-600 text-[12px] font-semibold">
+                  Close
                 </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Scrollable Content ── */}
-      <div className="flex-1 overflow-y-auto flex flex-col" style={{ scrollbarWidth: 'none' }}>
-
-      {/* ── Header ── */}
-      <div className="px-5 pt-4 pb-3 border-b border-[#1a1a1a] flex-shrink-0">
-        <div className="flex items-center gap-3 mb-0.5">
-          <button onClick={() => setTab('tracking')} className="w-8 h-8 bg-[#111] rounded-xl border border-[#2a2a2a] flex items-center justify-center flex-shrink-0">
-            <ArrowLeft className="w-4 h-4 text-gray-400" />
-          </button>
-          <div className="flex-1">
-            <div className="flex items-center justify-between">
-              <h2 className="text-white font-black text-lg tracking-tight">TF-8821</h2>
-              <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[9px] font-black uppercase tracking-wide ${TRACK_CFG['en_route'].badge} ${TRACK_CFG['en_route'].text}`}>
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${TRACK_CFG['en_route'].dot} animate-pulse`} /> En Route
-              </span>
-            </div>
-            <p className="text-gray-400 text-[11px] mt-0.5">CA 456-789 · Tautliner · Engine overheating</p>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Status Timeline ── */}
-      <div className="mx-5 mb-4 bg-[#0f0f0f] rounded-xl border border-[#1e1e1e] p-4">
-        <p className="text-yellow-400 text-[11px] font-black uppercase tracking-widest mb-4">Status Timeline</p>
-        <div>
-          {TIMELINE_STEPS.map(({ key, label, time }, i) => {
-            const stepIdx  = STATUS_FLOW.indexOf(key);
-            const isDone   = stepIdx <= currentIdx;
-            const isActive = stepIdx === currentIdx;
-            const isLast   = i === TIMELINE_STEPS.length - 1;
-            return (
-              <div key={key} className="flex gap-3">
-                {/* Dot + connector */}
-                <div className="flex flex-col items-center">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center border-2 flex-shrink-0 transition-all ${
-                    isActive
-                      ? 'bg-yellow-400 border-yellow-400 shadow-[0_0_12px_rgba(251,191,36,0.5)]'
-                      : isDone
-                        ? 'bg-yellow-400 border-yellow-400'
-                        : 'border-[#2a2a2a] bg-[#0f0f0f]'
-                  }`}>
-                    {isDone
-                      ? <Check className="w-3.5 h-3.5 text-black" strokeWidth={3} />
-                      : <div className="w-2 h-2 bg-[#2a2a2a] rounded-full" />
-                    }
-                  </div>
-                  {!isLast && (
-                    <div className={`w-px my-1 ${isDone && !isActive ? 'bg-yellow-400/50' : isDone ? 'bg-yellow-400/30' : 'bg-[#1e1e1e]'}`} style={{ minHeight: 22 }} />
-                  )}
-                </div>
-                {/* Label */}
-                <div className="pb-3 flex-1 flex items-start justify-between">
-                  <p className={`text-[13px] font-black ${isActive ? 'text-yellow-400' : isDone ? 'text-white' : 'text-gray-700'}`}>{label}</p>
-                  <p className={`text-[10px] font-mono ${isDone ? isActive ? 'text-yellow-400/70' : 'text-gray-500' : 'text-gray-800'}`}>{isDone || isActive ? time : '—'}</p>
-                </div>
               </div>
-            );
-          })}
-        </div>
-        {/* Demo stepper */}
-        <div className="mt-1 pt-3 border-t border-[#1a1a1a] flex items-center gap-2">
-          <p className="text-gray-700 text-[9px] uppercase tracking-widest">Demo:</p>
-          {STATUS_FLOW.map((s) => (
-            <button
-              key={s}
-              onClick={() => setJobStatus(s)}
-              className={`flex-1 py-1 rounded-lg text-[8px] font-black transition-colors ${jobStatus === s ? 'bg-yellow-400 text-black' : 'bg-[#1a1a1a] text-gray-600'}`}
-            >
-              {s.replace('_', ' ')}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Mechanic Info Card ── */}
-      {mechanicAssigned ? (
-        <div className="mx-5 mb-4 bg-[#0f0f0f] rounded-xl border border-[#1e1e1e] p-4">
-          <p className="text-yellow-400 text-[11px] font-black uppercase tracking-widest mb-3">Assigned Mechanic</p>
-          <div className="flex items-center gap-3">
-            <img src={MECHANIC_IMG} alt="Mechanic" className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-black text-sm">James Mitchell</p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                <span className="text-yellow-400 text-[11px] font-semibold">4.9</span>
-                <span className="text-gray-400 text-[11px]">· 184 jobs</span>
-              </div>
-              <p className="text-gray-300 text-[11px] mt-0.5">+44 7734 567 890</p>
-            </div>
-            <a href="tel:+447734567890" className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform">
-              <Phone className="w-4 h-4 text-black" />
-            </a>
-          </div>
-          {/* ETA row */}
-          <div className="mt-3 pt-3 border-t border-[#1a1a1a] flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 text-gray-600" />
-              <span className="text-gray-500 text-[12px]">ETA (from mechanic)</span>
-            </div>
-            <span className="text-white text-[12px] font-black">18 min</span>
-          </div>
-        </div>
-      ) : (
-        <div className="mx-5 mb-4 bg-[#0f0f0f] rounded-xl border border-[#1e1e1e] p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
-            <Wrench className="w-5 h-5 text-gray-700" />
-          </div>
-          <div>
-            <p className="text-gray-500 text-[12px] font-semibold">Awaiting mechanic assignment</p>
-            <p className="text-gray-700 text-[10px] mt-0.5">A nearby mechanic will be assigned shortly</p>
-          </div>
-        </div>
-      )}
-
-      {/* ── Location Section ── */}
-      <div className="mx-5 mb-4 bg-[#0f0f0f] rounded-xl border border-[#1e1e1e] p-4">
-        <p className="text-yellow-400 text-[11px] font-black uppercase tracking-widest mb-3">Breakdown Location</p>
-        <div className="flex items-start gap-2.5 mb-3">
-          <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
-          <p className="text-white text-[13px] leading-snug">N1 Northbound, near Buccleuch Interchange, Sandton, Gauteng</p>
-        </div>
-        <a
-          href="https://maps.google.com/?q=-26.0467,28.0713"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full border border-yellow-400/30 bg-yellow-400/5 text-yellow-400 py-2.5 rounded-xl font-black text-[12px] tracking-wide flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-        >
-          <ExternalLink className="w-3.5 h-3.5" /> Open in Google Maps
-        </a>
-      </div>
-
-      {/* ── Payment Status ── */}
-      <div className="mx-5 mb-4 bg-[#0f0f0f] rounded-xl border border-[#1e1e1e] p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-yellow-400 text-[11px] font-black uppercase tracking-widest">Payment</p>
-          <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg border ${payment.bg} ${payment.color}`}>
-            {payment.label}
-          </span>
-        </div>
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600 text-[12px]">Quote Amount</span>
-            <span className="text-white text-[12px] font-black">£165</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600 text-[12px]">Platform Fee (12%)</span>
-            <span className="text-gray-500 text-[12px] font-semibold">£20</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600 text-[12px]">Pre-Auth Held</span>
-            <span className="text-orange-400 text-[12px] font-semibold">£220</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600 text-[12px]">Card</span>
-            <span className="text-gray-500 text-[12px]">VISA •••• 4891</span>
-          </div>
-          <div className="border-t border-[#2a2a2a] pt-2 flex justify-between">
-            <span className="text-white text-[12px] font-black">Total Payable</span>
-            <span className="text-yellow-400 text-[12px] font-black">£185</span>
-          </div>
-        </div>
-        {/* Demo: cycle payment status */}
-        <div className="mt-3 pt-3 border-t border-[#1a1a1a] flex gap-1.5">
-          {(['authorised', 'paid', 'refunded', 'released'] as const).map(s => (
-            <button
-              key={s}
-              onClick={() => setPaymentStatus(s)}
-              className={`flex-1 py-1 rounded-lg text-[8px] font-black transition-colors ${paymentStatus === s ? 'bg-yellow-400 text-black' : 'bg-[#1a1a1a] text-gray-600'}`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Invoice Download — visible whenever funds are released ── */}
-      {paymentStatus === 'released' && (
-        <div className="mx-5 mb-4 bg-[#0f0f0f] rounded-xl border border-yellow-400/20 p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-xl bg-yellow-400/10 flex items-center justify-center flex-shrink-0">
-              <FileCheck className="w-5 h-5 text-yellow-400" />
-            </div>
-            <div>
-              <p className="text-white text-[13px] font-black">Invoice Ready</p>
-              <p className="text-gray-500 text-[10px]">TF-8821 · CA 456-789 · 8 Mar 2026</p>
             </div>
           </div>
-          <div className="bg-[#111] rounded-xl p-3 mb-3 space-y-1.5">
-            <div className="flex justify-between">
-              <span className="text-gray-600 text-[11px]">Labour & Parts</span>
-              <span className="text-white text-[11px] font-semibold">£165.00</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600 text-[11px]">Platform Fee (12%)</span>
-              <span className="text-gray-500 text-[11px]">£20.00</span>
-            </div>
-            <div className="flex justify-between border-t border-[#2a2a2a] pt-1.5">
-              <span className="text-white text-[11px] font-black">Total Charged</span>
-              <span className="text-yellow-400 text-[11px] font-black">£185.00</span>
-            </div>
-          </div>
-          <button className="w-full bg-yellow-400 text-black py-3.5 rounded-xl font-black text-[13px] tracking-widest uppercase flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
-            <Download className="w-4 h-4" /> Download Invoice (PDF)
-          </button>
-          <p className="text-center text-gray-700 text-[9px] mt-2">Invoice ref: TF-INV-20260308-8821</p>
-        </div>
-      )}
-
-      {/* ── Rate Mechanic ── */}
-      {paymentStatus === 'released' && !ratingSubmitted && (
-        <div className="mx-5 mb-4">
-          <button
-            onClick={() => setRatingModal(true)}
-            className="w-full bg-[#0f0f0f] border border-yellow-400/30 rounded-xl py-4 flex items-center justify-center gap-2.5 active:scale-[0.98] transition-transform"
-          >
-            <div className="flex items-center gap-0.5">
-              {[1,2,3,4,5].map(i => (
-                <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-              ))}
-            </div>
-            <span className="text-yellow-400 font-black text-[13px] tracking-wide uppercase">Rate Your Mechanic</span>
-          </button>
-        </div>
-      )}
-      {paymentStatus === 'released' && ratingSubmitted && (
-        <div className="mx-5 mb-4 bg-green-400/10 border border-green-400/30 rounded-xl px-4 py-3 flex items-center gap-2.5">
-          <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
-          <p className="text-green-400 text-[12px] font-semibold">Review submitted — thank you!</p>
-        </div>
-      )}
-
-      {/* ── Action Buttons ── */}
-      <div className="px-5 pb-6 space-y-2.5">
-        {mechanicStartedJourney && paymentStatus !== 'released' && (
-          <button
-            onClick={() => setContactModal(true)}
-            className="w-full bg-yellow-400 text-black py-4 rounded-xl font-black text-[13px] tracking-widest uppercase flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-          >
-            <MessageCircle className="w-4 h-4" /> Contact Mechanic
-          </button>
-        )}
-        {/* Cancel — hidden once funds are released */}
-        {paymentStatus !== 'released' && (
-          <button
-            onClick={() => setCancelModal(true)}
-            className="w-full border border-red-500/30 text-red-400 py-3.5 rounded-xl font-semibold text-[12px] tracking-wide bg-red-500/5 active:scale-[0.98] transition-transform"
-          >
-            {detailHasFee ? `Cancel Job · ${detailFeeAmt} fee (10%)` : 'Cancel Job — Free'}
-          </button>
-        )}
-      </div>
-
-      </div>
+        );
+      })()}
     </div>
   );
 }
 
-// ─── Quote Received ───────────────────────────────────────────────────────────────
-function QuoteReceived({ setTab }: { setTab: (t: string) => void }) {
-  const [state, setState] = useState<'idle' | 'accepted' | 'declined'>('idle');
-  // Quote total = £165; cancellation fee = 10% once accepted
-  const quoteTotal     = 165;
-  const cancellationFee = `£${Math.round(quoteTotal * 0.1)}`; // £17
-
-  if (state === 'accepted') {
-    return (
-      <div className="h-full bg-[#080808] flex flex-col items-center justify-center px-8 text-center">
-        <div className="relative mb-5">
-          <div className="absolute inset-0 bg-green-400 rounded-full blur-[32px] opacity-25" />
-          <div className="relative w-20 h-20 bg-[#0f0f0f] border-2 border-green-400 rounded-full flex items-center justify-center">
-            <CheckCircle className="w-10 h-10 text-green-400" />
-          </div>
-        </div>
-        <p className="text-white font-black text-xl mb-2">Quote Accepted!</p>
-        <p className="text-gray-400 text-[13px] leading-relaxed mb-2">
-          <span className="text-white font-semibold">James Mitchell</span> has been confirmed for job <span className="text-yellow-400 font-semibold">TF-8821</span>.
-        </p>
-        <p className="text-gray-400 text-[12px] leading-relaxed mb-6">
-          He will set off shortly. By accepting this quote, a <span className="text-red-400 font-semibold">10% cancellation fee</span> now applies if you cancel this emergency job.
-        </p>
-        <button onClick={() => setTab('tracking')} className="w-full bg-yellow-400 text-black py-4 rounded-xl font-black text-[13px] tracking-widest uppercase flex items-center justify-center gap-2">
-          <Navigation className="w-4 h-4" /> Track Job
-        </button>
-        <button onClick={() => setState('idle')} className="w-full text-gray-500 text-[12px] py-3">
-          Back
-        </button>
-      </div>
-    );
-  }
-
-  if (state === 'declined') {
-    return (
-      <div className="h-full bg-[#080808] flex flex-col items-center justify-center px-8 text-center">
-        <div className="w-16 h-16 bg-[#1a1a1a] border border-[#2a2a2a] rounded-full flex items-center justify-center mb-5">
-          <X className="w-8 h-8 text-gray-500" />
-        </div>
-        <p className="text-white font-black text-xl mb-2">Quote Declined</p>
-        <p className="text-gray-400 text-[13px] leading-relaxed mb-6">
-          The mechanic's quote for <span className="text-yellow-400 font-semibold">TF-8821</span> has been declined. Your job remains live and other mechanics can still respond.
-        </p>
-        <button onClick={() => setTab('tracking')} className="w-full bg-[#111] border border-[#2a2a2a] text-white py-4 rounded-xl font-black text-[13px]">
-          Back to Tracking
-        </button>
-        <button onClick={() => setState('idle')} className="w-full text-gray-500 text-[12px] py-3">
-          View Quote Again
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full bg-[#080808] flex flex-col relative overflow-hidden">
-
-      {/* ── Dimmed dashboard hint (top portion) ── */}
-      <div className="flex-1 flex flex-col justify-end relative">
-        {/* Fake blurred bg to imply the app is underneath */}
-        <div className="absolute inset-0 flex flex-col px-5 pt-5 opacity-20 pointer-events-none select-none">
-          <p className="text-white font-black text-xl mb-3">Dashboard</p>
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            {['Active', 'Awaiting', 'Month'].map(l => (
-              <div key={l} className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] p-3 h-16" />
-            ))}
-          </div>
-          <div className="bg-yellow-400/20 rounded-xl h-14 mb-3" />
-          <div className="space-y-2">
-            <div className="bg-[#0f0f0f] rounded-xl h-20 border border-[#1a1a1a]" />
-            <div className="bg-[#0f0f0f] rounded-xl h-20 border border-[#1a1a1a]" />
-          </div>
-        </div>
-
-        {/* ── Push notification banner ── */}
-        <div className="absolute top-4 left-4 right-4 z-20">
-          <div className="bg-[#161616] border border-yellow-400/40 rounded-2xl p-3.5 flex items-center gap-3 shadow-[0_4px_32px_rgba(0,0,0,0.7)]">
-            <div className="w-10 h-10 bg-yellow-400/15 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Bell className="w-5 h-5 text-yellow-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-black text-[12px]">New Quote — TF-8821</p>
-              <p className="text-gray-400 text-[11px] truncate">James Mitchell quoted £165 · responded in 3 min</p>
-            </div>
-            <span className="text-yellow-400 text-[10px] font-black flex-shrink-0">NOW</span>
-          </div>
-        </div>
-
-        {/* ── Quote Sheet ── */}
-        <div className="relative z-10 bg-[#0e0e0e] rounded-t-3xl border-t border-[#2a2a2a] pt-5 pb-6 px-5 shadow-[0_-8px_48px_rgba(0,0,0,0.8)]">
-
-          {/* Handle */}
-          <div className="w-10 h-1 bg-[#333] rounded-full mx-auto mb-5" />
-
-          {/* Sheet header */}
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-0.5">New Quote Received</p>
-              <h2 className="text-white font-black text-lg tracking-tight">TF-8821</h2>
-              <p className="text-gray-400 text-[11px]">Tautliner · CA 456-789 · Engine overheating</p>
-            </div>
-            <span className="text-[9px] font-black px-2.5 py-1 rounded-lg bg-orange-400/10 border border-orange-400/30 text-orange-400 uppercase">HIGH</span>
-          </div>
-
-          {/* Mechanic card */}
-          <div className="bg-[#111] rounded-xl border border-[#1e1e1e] p-3.5 flex items-center gap-3 mb-3">
-            <img src={MECHANIC_IMG} alt="Mechanic" className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-[#2a2a2a]" />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <p className="text-white font-black text-[13px]">James Mitchell</p>
-                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-green-400/15 text-green-400 border border-green-400/30">VERIFIED</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                <span className="text-yellow-400 text-[11px] font-semibold">4.9</span>
-                <span className="text-gray-500 text-[11px]">· 184 jobs</span>
-                <span className="text-gray-600 text-[11px]">·</span>
-                <Navigation className="w-3 h-3 text-orange-400" />
-                <span className="text-orange-400 text-[11px] font-semibold">18 min ETA</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Quote breakdown */}
-          <div className="bg-[#111] rounded-xl border border-[#1e1e1e] p-3.5 mb-3">
-            <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-2.5">Quote Breakdown</p>
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400 text-[12px]">Labour (est. 1.5 hrs × £75)</span>
-                <span className="text-white text-[12px] font-semibold">£112</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400 text-[12px]">Call-out Fee</span>
-                <span className="text-white text-[12px] font-semibold">£35</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400 text-[12px]">Parts (est.)</span>
-                <span className="text-white text-[12px] font-semibold">£18</span>
-              </div>
-              <div className="flex justify-between items-center border-t border-[#2a2a2a] pt-1.5 mt-1">
-                <span className="text-white text-[13px] font-black">Total</span>
-                <span className="text-yellow-400 text-[15px] font-black">£165</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Cancellation policy */}
-          <div className="bg-[#0f0f0f] border border-[#1e1e1e] rounded-xl p-3.5 mb-4">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" />
-              <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Cancellation Policy</p>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-start gap-2.5">
-                <div className="w-5 h-5 rounded-full bg-green-400/15 border border-green-400/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Check className="w-3 h-3 text-green-400" strokeWidth={3} />
-                </div>
-                <p className="text-white text-[12px] leading-snug"><span className="text-green-400 font-semibold">Free cancellation</span> before the mechanic is on route</p>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <div className="w-5 h-5 rounded-full bg-red-400/15 border border-red-400/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <AlertTriangle className="w-3 h-3 text-red-400" strokeWidth={2.5} />
-                </div>
-                <p className="text-white text-[12px] leading-snug"><span className="text-red-400 font-semibold">10% cancellation fee</span> once the mechanic is on the way</p>
-              </div>
-            </div>
-          </div>
-
-          {/* CTA buttons */}
-          <div className="space-y-2">
-            <button
-              onClick={() => setState('accepted')}
-              className="w-full bg-yellow-400 text-black py-4 rounded-xl font-black text-[13px] tracking-widest uppercase flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-            >
-              <CheckCircle className="w-4 h-4" /> Accept Quote — £165
-            </button>
-            <button
-              onClick={() => setState('declined')}
-              className="w-full border border-[#2a2a2a] text-gray-400 py-3.5 rounded-xl font-semibold text-[12px] hover:border-red-500/30 hover:text-red-400 transition-colors"
-            >
-              Decline Quote
-            </button>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Help & Support Sheet (Fleet) ─────────────────────────────────────────────
-function FleetHelpSheet({ onClose }: { onClose: () => void }) {
+// ─── Help & Support Sheet ─────────────────────────────────────────────────────────
+function HelpSupportSheet({ role, onClose }: { role: 'company' | 'mechanic-employee'; onClose: () => void }) {
   const [category, setCategory] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [sent, setSent] = useState(false);
 
   const categories = [
-    { id: 'job',      label: 'Job / Booking',     icon: Zap },
-    { id: 'payment',  label: 'Payment / Invoice',  icon: CreditCard },
-    { id: 'account',  label: 'Account & Profile',  icon: User },
-    { id: 'mechanic', label: 'Mechanic Issue',      icon: Wrench },
-    { id: 'other',    label: 'Other',              icon: HelpCircle },
+    { id: 'technical', label: 'Technical Issue', icon: Wrench },
+    { id: 'payment',   label: 'Payment / Billing', icon: DollarSign },
+    { id: 'account',   label: 'Account & Profile', icon: User },
+    { id: 'job',       label: 'Job / Booking',     icon: Briefcase },
+    { id: 'other',     label: 'Other',             icon: HelpCircle },
   ];
 
   if (sent) {
     return (
       <div className="absolute inset-0 bg-black/85 z-50 flex flex-col justify-end" onClick={onClose}>
         <div className="bg-[#0e0e0e] rounded-t-3xl border-t border-[#2a2a2a] p-6 flex flex-col items-center text-center" onClick={e => e.stopPropagation()}>
-          <div className="w-10 h-1 bg-[#333] rounded-full mx-auto mb-5 mt-1" />
-          <div className="w-16 h-16 bg-green-400/15 rounded-2xl flex items-center justify-center mb-4 border border-green-400/30">
+          <div className="flex justify-center mb-1 pt-1">
+            <div className="w-10 h-1 bg-[#333] rounded-full" />
+          </div>
+          <div className="w-16 h-16 bg-green-400/15 rounded-2xl flex items-center justify-center mb-4 mt-4 border border-green-400/30">
             <CheckCircle className="w-8 h-8 text-green-400" />
           </div>
           <p className="text-white font-black text-[16px] mb-1.5">Message Sent!</p>
           <p className="text-gray-400 text-[12px] leading-relaxed mb-6">Our support team will respond within 24 hours via your registered email address.</p>
-          <button onClick={onClose} className="w-full bg-yellow-400 text-black py-3.5 rounded-xl font-black text-[12px] tracking-widest uppercase">Done</button>
+          <button onClick={onClose} className="w-full bg-yellow-400 text-black py-3.5 rounded-xl font-black text-[12px] tracking-widest uppercase">
+            Done
+          </button>
         </div>
       </div>
     );
@@ -2627,7 +2191,7 @@ function FleetHelpSheet({ onClose }: { onClose: () => void }) {
               rows={5}
               className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/40 text-[12px] resize-none leading-relaxed"
             />
-            <p className="text-gray-600 text-[10px] mt-1.5">Sent from: john@logistix.co.za · Fleet Operator</p>
+            <p className="text-gray-600 text-[10px] mt-1.5">Sent from: {role === 'company' ? 'admin@swiftmechanics.co.uk · Company' : 'john.smith@swiftmechanics.co.uk · Mechanic Employee'}</p>
           </div>
         </div>
         <div className="px-5 pb-5 pt-3 border-t border-[#1a1a1a] flex-shrink-0 space-y-2">
@@ -2644,485 +2208,95 @@ function FleetHelpSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ─── Fleet Profile ────────────────────────────────────────────────────────────────
-function FleetProfile({ setTab, openHelp, onLogout }: { setTab: (t: string) => void; openHelp: () => void; onLogout?: () => void }) {
-  return (
-    <div className="h-full bg-[#080808] overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-      {/* Header */}
-      <div className="px-5 pt-5 pb-5 flex flex-col items-center border-b border-[#1a1a1a]">
-        <div className="w-16 h-16 bg-yellow-400 rounded-2xl flex items-center justify-center mb-3 shadow-[0_0_30px_rgba(251,191,36,0.2)]">
-          <span className="text-black font-black text-xl">LT</span>
-        </div>
-        <h2 className="text-white font-black text-lg tracking-tight">Logistix Transport</h2>
-        <p className="text-gray-500 text-[12px] mt-0.5">john@logistix.co.za</p>
-      </div>
+// ─── Main Export ──────────────────────────────────────────────────────────────
+export function CompanyApp({ screen: initialScreen, onLogout }: { screen: string; onLogout?: () => void }) {
+  const [currentScreen, setCurrentScreen] = useState(initialScreen || 'company-dashboard');
+  const [jobsFilter, setJobsFilter] = useState<string>('All');
+  
+  // Sync external navigation (sidebar) with internal state
+  React.useEffect(() => {
+    setCurrentScreen(initialScreen);
+  }, [initialScreen]);
+  
+  // Navigation helpers
+  const navigateToJobs = (filter?: string) => {
+    setJobsFilter(filter || 'All');
+    setCurrentScreen('company-jobs');
+  };
+  const navigateToTeam = () => setCurrentScreen('company-team');
+  const navigateToProfile = () => setCurrentScreen('company-profile');
+  const navigateToEditProfile = () => setCurrentScreen('company-edit-profile');
+  const navigateToEarnings = () => setCurrentScreen('company-earnings');
+  
+  // Shared Bottom Tab Bar Component
+  const TabBar = ({ activeScreen }: { activeScreen: string }) => {
+    const tabs = [
+      { id: 'company-dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      { id: 'company-job-feed', icon: Search, label: 'Feed' },
+      { id: 'company-jobs', icon: Briefcase, label: 'Jobs' },
+      { id: 'company-team', icon: Users, label: 'Team' },
+      { id: 'company-profile', icon: User, label: 'Profile' },
+    ];
 
-      <div className="px-5 space-y-3 py-5 pb-8">
-
-        {/* Company Details */}
-        <Section title="Company Details">
-          <Row label="Company Name" value="Logistix Transport (Pty) Ltd" />
-          <Row label="Reg Number" value="2019/223456/07" />
-          <Row label="VAT Number" value="4120889456" />
-          <Row label="Fleet Size" value="21–50 vehicles" />
-        </Section>
-
-        {/* Contact Person */}
-        <Section title="Contact Person">
-          <Row label="Name" value="John Khumalo" />
-          <Row label="Role" value="Fleet Manager" />
-          <Row label="Phone" value="+44 7712 345 678" />
-          <Row label="Email" value="john@logistix.co.za" />
-        </Section>
-
-        {/* Billing & Payment */}
-        <Section title="Billing & Payment">
-          <Row label="Card Number" value="VISA •••• 4891" />
-          <Row label="Expiry" value="09 / 28" />
-          <Row label="CCV" value="•••" />
-          <Row label="Billing Address" value="123 Logistics Ave, JHB" />
-        </Section>
-
-        {/* Actions */}
-        <button
-          onClick={() => setTab('edit-profile')}
-          className="w-full bg-yellow-400 rounded-xl py-3.5 flex items-center justify-center gap-2 text-black text-[12px] font-black tracking-wide"
-        >
-          <Edit3 className="w-4 h-4" /> Edit Profile
-        </button>
-
-        {/* Payment Methods */}
-        <button
-          onClick={() => setTab('payment-methods')}
-          className="w-full bg-[#0f0f0f] border border-[#1e1e1e] rounded-xl py-3.5 flex items-center gap-3 px-4 hover:border-yellow-400/30 transition-colors"
-        >
-          <div className="w-8 h-8 bg-yellow-400/10 rounded-lg flex items-center justify-center flex-shrink-0">
-            <CreditCard className="w-4 h-4 text-yellow-400" />
-          </div>
-          <div className="flex-1 text-left">
-            <p className="text-white text-[12px] font-semibold">Payment Methods</p>
-            <p className="text-gray-600 text-[10px]">Manage your cards & billing</p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-gray-600" />
-        </button>
-
-        {/* My Fleet */}
-        <button
-          onClick={() => setTab('vehicles')}
-          className="w-full bg-[#0f0f0f] border border-[#1e1e1e] rounded-xl py-3.5 flex items-center gap-3 px-4 hover:border-yellow-400/30 transition-colors"
-        >
-          <div className="w-8 h-8 bg-yellow-400/10 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Truck className="w-4 h-4 text-yellow-400" />
-          </div>
-          <div className="flex-1 text-left">
-            <p className="text-white text-[12px] font-semibold">My Fleet</p>
-            <p className="text-gray-600 text-[10px]">Manage your vehicles</p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-gray-600" />
-        </button>
-
-        {/* Help & Support */}
-        <button
-          onClick={openHelp}
-          className="w-full bg-[#0f0f0f] border border-[#1e1e1e] rounded-xl py-3.5 flex items-center gap-3 px-4 hover:border-yellow-400/30 transition-colors"
-        >
-          <div className="w-8 h-8 bg-yellow-400/10 rounded-lg flex items-center justify-center flex-shrink-0">
-            <HelpCircle className="w-4 h-4 text-yellow-400" />
-          </div>
-          <div className="flex-1 text-left">
-            <p className="text-white text-[12px] font-semibold">Help &amp; Support</p>
-            <p className="text-gray-600 text-[10px]">Send a message to the TruckFix team</p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-gray-600" />
-        </button>
-
-        <button 
-          onClick={onLogout}
-          className="w-full border border-red-500/20 rounded-xl py-3.5 flex items-center justify-center gap-2 text-red-400 text-[12px] font-semibold bg-red-500/5 active:scale-[0.98] transition-transform"
-        >
-          <LogOut className="w-4 h-4" /> Log Out
-        </button>
-
-        {/* Created at */}
-        <p className="text-center text-gray-700 text-[10px] pt-2">Account created · 07 Mar 2026 · TruckFix v2.4.1</p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Fleet Edit Profile ───────────────────────────────────────────────────────────
-function FleetEditProfile({ setTab, onSave }: { setTab: (t: string) => void; onSave: () => void }) {
-  return (
-    <div className="h-full bg-[#080808] flex flex-col">
-      {/* Header */}
-      <div className="px-5 pt-5 pb-4 border-b border-[#1a1a1a] flex items-center gap-3 flex-shrink-0">
-        <button
-          onClick={() => setTab('profile')}
-          className="w-8 h-8 rounded-xl bg-[#111] border border-[#2a2a2a] flex items-center justify-center"
-        >
-          <ChevronDown className="w-4 h-4 text-gray-400 rotate-90" />
-        </button>
-        <div>
-          <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">Fleet Operator</p>
-          <h2 className="text-white font-black text-base tracking-tight">Edit Profile</h2>
-        </div>
-      </div>
-
-      {/* Scrollable fields */}
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5" style={{ scrollbarWidth: 'none' }}>
-
-        {/* Company Details */}
-        <div>
-          <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Company Details</p>
-          <div className="space-y-3">
-            <Input label="Company Name" placeholder="Logistix Transport (Pty) Ltd" />
-            <Input label="Reg Number" placeholder="2019/223456/07" />
-            <Input label="VAT Number" placeholder="4120889456" />
-            <div className="space-y-1.5">
-              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">
-                Fleet Size <span className="normal-case tracking-normal text-gray-700">(optional)</span>
-              </label>
-              <select className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-yellow-400/60 text-sm appearance-none">
-                <option>21–50 vehicles</option>
-                <option>1–5 vehicles</option>
-                <option>6–20 vehicles</option>
-                <option>51–100 vehicles</option>
-                <option>100+ vehicles</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="h-px bg-[#1a1a1a]" />
-
-        {/* Contact Person */}
-        <div>
-          <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Contact Person</p>
-          <div className="space-y-3">
-            <Input label="Full Name" placeholder="John Khumalo" />
-            <Input label="Role / Title" placeholder="Fleet Manager" />
-            <Input label="Phone" placeholder="+27 82 123 4567" type="tel" />
-            <Input label="Email" placeholder="john@logistix.co.za" type="email" />
-          </div>
-        </div>
-
-        <div className="h-px bg-[#1a1a1a]" />
-
-        {/* Billing & Payment */}
-        <div>
-          <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest mb-3">Billing & Payment</p>
-          <div className="space-y-3">
-            {/* Card number with lock icon */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Card Number</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="1234  5678  9012  3456"
-                  maxLength={19}
-                  className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 pr-10 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-sm tracking-widest"
-                />
-                <Lock className="absolute right-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-700" />
-              </div>
-            </div>
-            {/* Expiry + CCV side by side */}
-            <div className="flex gap-3">
-              <div className="space-y-1.5 flex-1">
-                <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Expiry</label>
-                <input
-                  type="text"
-                  placeholder="MM / YY"
-                  maxLength={7}
-                  className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-sm tracking-widest"
-                />
-              </div>
-              <div className="space-y-1.5 flex-1">
-                <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">CCV</label>
-                <div className="relative">
-                  <input
-                    type="password"
-                    placeholder="•••"
-                    maxLength={4}
-                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 pr-10 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-sm"
-                  />
-                  <Lock className="absolute right-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-700" />
+    return (
+      <div className="flex-shrink-0 bg-[#080808] border-t border-[#1a1a1a] pb-2 pt-1">
+        <div className="flex">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            // Keep profile tab active when viewing earnings or edit-profile
+            const isActive = activeScreen === tab.id || 
+              (tab.id === 'company-profile' && (activeScreen === 'company-earnings' || activeScreen === 'company-edit-profile'));
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setCurrentScreen(tab.id)}
+                className="flex-1 flex flex-col items-center gap-1 py-2 relative"
+              >
+                <div className={`w-7 h-7 rounded-xl flex items-center justify-center transition-colors ${isActive ? 'bg-yellow-400' : ''}`}>
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-black' : 'text-gray-600'}`} strokeWidth={isActive ? 2.5 : 2} />
+                  {tab.id === 'company-jobs' && PENDING_REVIEW_JOBS.length > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full text-white text-[9px] font-black flex items-center justify-center">
+                      {PENDING_REVIEW_JOBS.length}
+                    </span>
+                  )}
                 </div>
-              </div>
-            </div>
-            <Input label="Billing Address" placeholder="123 Logistics Ave, Johannesburg" />
-          </div>
-          {/* Security note */}
-          <div className="flex items-center gap-2 mt-3">
-            <Lock className="w-3 h-3 text-gray-700 flex-shrink-0" />
-            <p className="text-gray-700 text-[10px]">Card details are encrypted and stored securely. TruckFix never stores raw card data.</p>
-          </div>
-        </div>
-
-        {/* Bottom padding */}
-        <div className="h-4" />
-      </div>
-
-      {/* Save footer */}
-      <div className="px-5 pb-6 pt-3 border-t border-[#1a1a1a] space-y-2.5 flex-shrink-0">
-        <PrimaryBtn onClick={onSave}>Save Changes</PrimaryBtn>
-        <button
-          onClick={() => setTab('profile')}
-          className="w-full py-3 text-gray-600 text-[12px] font-semibold"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, children }: any) {
-  return (
-    <div className="bg-[#0f0f0f] rounded-xl border border-[#1a1a1a] overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-[#1a1a1a]">
-        <p className="text-yellow-400 text-[10px] font-black uppercase tracking-widest">{title}</p>
-      </div>
-      <div className="p-4 space-y-2.5">{children}</div>
-    </div>
-  );
-}
-
-function Row({ label, value }: any) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-gray-600 text-[12px]">{label}</span>
-      <span className="text-white text-[12px] font-semibold">{value}</span>
-    </div>
-  );
-}
-
-// ─── Vehicle Detail ───────────────────────────────────────────────────────────────
-function VehicleDetail({ vehicle, onClose, onRequestService }: { vehicle: any; onClose: () => void; onRequestService?: (vehicle: any) => void }) {
-  const [showEditSheet, setShowEditSheet] = useState(false);
-  const [editFormData, setEditFormData] = useState({
-    reg: vehicle.reg,
-    make: vehicle.make,
-    model: vehicle.model,
-    type: vehicle.type,
-    vin: vehicle.vin,
-    mileage: vehicle.mileage,
-  });
-
-  const handleSave = () => {
-    setShowEditSheet(false);
-  };
-
-  return (
-    <div className="h-full bg-[#080808] overflow-y-auto relative" style={{ scrollbarWidth: 'none' }}>
-      {/* Header */}
-      <div className="px-5 pt-5 pb-4 border-b border-[#1a1a1a] flex items-center gap-3">
-        <button onClick={onClose} className="w-9 h-9 bg-[#1a1a1a] rounded-xl flex items-center justify-center flex-shrink-0">
-          <ArrowLeft className="w-4 h-4 text-gray-400" />
-        </button>
-        <div className="flex-1">
-          <p className="text-white font-black text-lg">{editFormData.reg}</p>
-          <p className="text-gray-500 text-[11px]">{editFormData.make} {editFormData.model}</p>
+                <span className={`text-[8px] font-semibold transition-colors ${isActive ? 'text-yellow-400' : 'text-gray-700'}`}>
+                  {tab.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
-
-      <div className="px-5 py-5 space-y-4 pb-24">
-        {/* Vehicle Info */}
-        <Section title="Vehicle Information">
-          <Row label="Registration" value={editFormData.reg} />
-          <Row label="Make" value={editFormData.make} />
-          <Row label="Model" value={editFormData.model} />
-        </Section>
-
-        {/* Recent Jobs */}
-        <Section title="Recent Jobs">
-          <div className="space-y-2.5">
-            <div className="bg-[#0a0a0a] rounded-lg p-3 border border-[#1e1e1e]">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-white text-[12px] font-semibold">Engine diagnostics</p>
-                <span className="text-green-400 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 bg-green-400/10 border border-green-400/30 rounded">Complete</span>
-              </div>
-              <p className="text-gray-600 text-[10px]">2 Mar 2025 · James Mitchell</p>
-            </div>
-            <div className="bg-[#0a0a0a] rounded-lg p-3 border border-[#1e1e1e]">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-white text-[12px] font-semibold">Brake replacement</p>
-                <span className="text-green-400 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 bg-green-400/10 border border-green-400/30 rounded">Complete</span>
-              </div>
-              <p className="text-gray-600 text-[10px]">15 Jan 2025 · Tom Stevens</p>
-            </div>
-          </div>
-        </Section>
-
-        {/* Actions */}
-        <button 
-          onClick={() => onRequestService?.(vehicle)}
-          className="w-full bg-yellow-400 rounded-xl py-3.5 flex items-center justify-center gap-2 text-black text-[12px] font-black tracking-wide uppercase active:scale-[0.98] transition-transform"
-        >
-          <Wrench className="w-4 h-4" /> Request Service
-        </button>
-        
-        <button 
-          onClick={() => setShowEditSheet(true)}
-          className="w-full bg-[#0f0f0f] border border-[#1e1e1e] rounded-xl py-3.5 flex items-center justify-center gap-2 text-gray-400 text-[12px] font-semibold active:scale-[0.98] transition-transform"
-        >
-          <Edit3 className="w-4 h-4" /> Edit Vehicle Details
-        </button>
-      </div>
-
-      {/* Edit Vehicle Sheet */}
-      {showEditSheet && (
-        <div className="absolute inset-0 bg-black/85 z-50 flex flex-col justify-end" onClick={() => setShowEditSheet(false)}>
-          <div className="bg-[#0e0e0e] rounded-t-3xl border-t border-[#2a2a2a] flex flex-col max-h-[85%]" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-              <div className="w-10 h-1 bg-[#333] rounded-full" />
-            </div>
-            <div className="px-5 pt-2 pb-3 border-b border-[#1a1a1a] flex items-center justify-between flex-shrink-0">
-              <p className="text-white font-black text-lg">Edit Vehicle</p>
-              <button onClick={() => setShowEditSheet(false)} className="w-8 h-8 bg-[#1a1a1a] rounded-xl flex items-center justify-center">
-                <X className="w-3.5 h-3.5 text-gray-500" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3" style={{ scrollbarWidth: 'none' }}>
-              <div className="space-y-1.5">
-                <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Registration</label>
-                <input 
-                  type="text" 
-                  value={editFormData.reg}
-                  onChange={(e) => setEditFormData({...editFormData, reg: e.target.value})}
-                  className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-sm" 
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Make</label>
-                <input 
-                  type="text" 
-                  value={editFormData.make}
-                  onChange={(e) => setEditFormData({...editFormData, make: e.target.value})}
-                  className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-sm" 
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">Model</label>
-                <input 
-                  type="text" 
-                  value={editFormData.model}
-                  onChange={(e) => setEditFormData({...editFormData, model: e.target.value})}
-                  className="w-full bg-[#111] border border-[#2a2a2a] rounded-xl px-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-yellow-400/60 text-sm" 
-                />
-              </div>
-            </div>
-            <div className="px-5 py-4 border-t border-[#1a1a1a] flex-shrink-0 space-y-2">
-              <button
-                onClick={handleSave}
-                className="w-full bg-yellow-400 text-black py-4 rounded-xl font-black text-sm tracking-widest uppercase active:scale-[0.98] transition-transform"
-              >
-                Save Changes
-              </button>
-              <button
-                onClick={() => setShowEditSheet(false)}
-                className="w-full py-2.5 text-gray-600 text-[12px] font-semibold"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Bottom Nav ───────────────────────────────────────────────────────────────────
-function BottomNav({ active, setTab }: { active: string; setTab: (t: string) => void }) {
-  const tabs = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'post-job', icon: PlusCircle, label: 'Post Job' },
-    { id: 'tracking', icon: Navigation, label: 'Tracking' },
-    { id: 'profile', icon: User, label: 'Profile' },
-  ];
-  return (
-    <div className="flex-shrink-0 bg-[#080808] border-t border-[#1a1a1a] pb-2 pt-1">
-      <div className="flex">
-        {tabs.map(({ id, icon: Icon, label }) => {
-          // tracking-detail is a sub-screen of tracking — keep Tracking tab highlighted
-          const isActive = active === id || (id === 'tracking' && active === 'tracking-detail');
-          return (
-            <button key={id} onClick={() => setTab(id)} className="flex-1 flex flex-col items-center gap-1 py-2">
-              <div className={`w-7 h-7 rounded-xl flex items-center justify-center transition-colors ${isActive ? 'bg-yellow-400' : ''}`}>
-                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-black' : 'text-gray-600'}`} strokeWidth={isActive ? 2.5 : 2} />
-              </div>
-              <span className={`text-[8px] font-semibold transition-colors ${isActive ? 'text-yellow-400' : 'text-gray-700'}`}>{label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Export ─────────────────────────────────────────────────────────────────
-const tabMap: Record<string, string> = {
-  'fleet-dashboard':      'dashboard',
-  'fleet-post-job':       'post-job',
-  'fleet-tracking':       'tracking',
-  'fleet-quote-received': 'quote-received',
-  'fleet-profile':        'profile',
-  'fleet-edit-profile':   'edit-profile',
-};
-
-export function FleetApp({ screen, onLogout }: { screen: string; onLogout?: () => void }) {
-  const [tab, setTab] = useState<string>(() => tabMap[screen] ?? 'dashboard');
-  const [profileComplete, setProfileComplete] = useState<boolean>(
-    () => localStorage.getItem('truckfix_fleet_profile_complete') === 'true'
-  );
-  const [helpOpen, setHelpOpen] = useState(false);
-  const [selectedVehicle, setSelectedVehicle] = useState<any>(null);
-  const [prefilledVehicle, setPrefilledVehicle] = useState<any>(null);
-
-  useEffect(() => {
-    const mapped = tabMap[screen];
-    if (mapped) setTab(mapped);
-  }, [screen]);
-
-  const handleSaveProfile = () => {
-    localStorage.setItem('truckfix_fleet_profile_complete', 'true');
-    setProfileComplete(true);
-    setTab('profile');
+    );
   };
 
-  const handleSelectVehicle = (vehicle: any) => {
-    setSelectedVehicle(vehicle);
-    setTab('vehicle-detail');
-  };
-
-  const handleRequestService = (vehicle: any) => {
-    setPrefilledVehicle(vehicle);
-    setTab('post-job');
-  };
-
-  function renderScreen() {
-    switch (tab) {
-      case 'dashboard':    return <FleetDashboard setTab={setTab} />;
-      case 'post-job':     return <PostJob setTab={setTab} profileComplete={profileComplete} prefilledVehicle={prefilledVehicle} />;
-      case 'tracking':        return <JobTracking setTab={setTab} />;
-      case 'tracking-detail': return <JobTrackingDetail setTab={setTab} />;
-      case 'quote-received':  return <QuoteReceived setTab={setTab} />;
-      case 'profile':         return <FleetProfile setTab={setTab} openHelp={() => setHelpOpen(true)} onLogout={onLogout} />;
-      case 'edit-profile': return <FleetEditProfile setTab={setTab} onSave={handleSaveProfile} />;
-      case 'payment-methods': return <PaymentMethodsScreen onClose={() => setTab('profile')} />;
-      case 'vehicles':        return <VehicleFleetScreen onClose={() => setTab('profile')} onSelectVehicle={handleSelectVehicle} />;
-      case 'vehicle-detail':  return selectedVehicle ? <VehicleDetail vehicle={selectedVehicle} onClose={() => setTab('vehicles')} onRequestService={handleRequestService} /> : <FleetDashboard setTab={setTab} />;
-      default:             return <FleetDashboard setTab={setTab} />;
+  // Render current screen without its own tab bar
+  const renderScreen = () => {
+    switch (currentScreen) {
+      case 'company-dashboard':
+        return <CompanyDashboard navigateToJobs={navigateToJobs} navigateToTeam={navigateToTeam} />;
+      case 'company-job-feed':
+        return <CompanyJobFeed />;
+      case 'company-jobs':
+        return <CompanyJobs initialFilter={jobsFilter} />;
+      case 'company-team':
+        return <CompanyTeam />;
+      case 'company-earnings':
+        return <CompanyEarnings navigateToProfile={navigateToProfile} />;
+      case 'company-profile':
+        return <CompanyProfile navigateToTeam={navigateToTeam} navigateToEditProfile={navigateToEditProfile} navigateToEarnings={navigateToEarnings} onLogout={onLogout} />;
+      case 'company-edit-profile':
+        return <CompanyEditProfile navigateToProfile={navigateToProfile} />;
+      default:
+        return <CompanyDashboard navigateToJobs={navigateToJobs} navigateToTeam={navigateToTeam} />;
     }
-  }
+  };
 
   return (
-    <div className="h-full flex flex-col bg-[#080808] relative">
-      {helpOpen && <FleetHelpSheet onClose={() => setHelpOpen(false)} />}
-      <div className="flex-1 overflow-hidden">
-        {renderScreen()}
-      </div>
-      <BottomNav active={tab} setTab={setTab} />
+    <div className="h-full flex flex-col relative">
+      {renderScreen()}
+      <TabBar activeScreen={currentScreen} />
     </div>
   );
 }

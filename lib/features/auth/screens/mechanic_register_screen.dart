@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
 import '../../../core/theme/app_colors.dart';
+import '../../../data/models/session.dart';
 import '../../../widgets/app_input.dart';
 import '../../../widgets/buttons.dart';
+import '../viewmodel/auth_viewmodel.dart';
 
 class MechanicRegisterScreen extends StatelessWidget {
   const MechanicRegisterScreen({super.key, required this.onNavigate});
@@ -41,6 +45,19 @@ class _MechanicRegisterBodyState extends State<_MechanicRegisterBody> {
   bool get _passwordsMatch =>
       _password.text.isNotEmpty && _confirm.text.isNotEmpty && _password.text == _confirm.text;
 
+  Future<void> _onCreateAccountPressed() async {
+    if (_businessType == 'company') {
+      await context.read<AuthViewModel>().completeRegistration(
+        UserRole.company,
+        email: 'admin@swiftmechanics.co.uk',
+      );
+      if (!mounted) return;
+      widget.onNavigate('company-dashboard');
+      return;
+    }
+    widget.onNavigate('mechanic-terms');
+  }
+
   String get _radiusLabel {
     if (_radius <= 5) return 'Local (≤5 mi)';
     if (_radius <= 15) return 'Town / City';
@@ -62,7 +79,7 @@ class _MechanicRegisterBodyState extends State<_MechanicRegisterBody> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   TextButton.icon(
-                    onPressed: () => widget.onNavigate('role-select'),
+                    onPressed: () => widget.onNavigate('role-select-signup'),
                     icon: const Icon(Icons.chevron_left, size: 16, color: AppColors.textGray),
                     label: const Text('Back', style: TextStyle(color: AppColors.textGray, fontSize: 12)),
                   ),
@@ -134,15 +151,17 @@ class _MechanicRegisterBodyState extends State<_MechanicRegisterBody> {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AppColors.border),
                     ),
-                    child: const Row(
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.check_circle, size: 16, color: AppColors.primary),
-                        SizedBox(width: 8),
+                        const Icon(Icons.check_circle, size: 16, color: AppColors.primary),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            "You work alone and manage all jobs yourself. You'll see all financial information and job details.",
-                            style: TextStyle(color: AppColors.textGray, fontSize: 11, height: 1.35),
+                            _businessType == 'company'
+                                ? 'You run a workshop with multiple mechanics. Assign jobs, manage your team, and handle company billing from the company dashboard.'
+                                : "You work alone and manage all jobs yourself. You'll see all financial information and job details.",
+                            style: const TextStyle(color: AppColors.textGray, fontSize: 11, height: 1.35),
                           ),
                         ),
                       ],
@@ -263,7 +282,7 @@ class _MechanicRegisterBodyState extends State<_MechanicRegisterBody> {
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
               child: Column(
                 children: [
-                  PrimaryButton(label: 'Create Account →', onPressed: () => widget.onNavigate('mechanic-terms')),
+                  PrimaryButton(label: 'Create Account →', onPressed: _onCreateAccountPressed),
                   const SizedBox(height: 12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,

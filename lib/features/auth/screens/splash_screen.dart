@@ -158,7 +158,7 @@ class SplashScreen extends StatelessWidget {
                         child: SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: () => onNavigate('role-select'),
+                            onPressed: () => onNavigate('role-select-signup'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: _kAccentYellow,
                               foregroundColor: Colors.black,

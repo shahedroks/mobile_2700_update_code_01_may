@@ -29,13 +29,14 @@ class FleetPostJobScreen extends StatefulWidget {
     required this.profileComplete,
     required this.prefilled,
     required this.onSubmit,
-    required this.onEditProfile,
+    required this.onContinueToJobForm,
   });
 
   final bool profileComplete;
   final String? prefilled;
   final VoidCallback onSubmit;
-  final VoidCallback onEditProfile;
+  /// From the incomplete-profile gate: show the full Post Job form (emergency / schedule, vehicle, category).
+  final VoidCallback onContinueToJobForm;
 
   @override
   State<FleetPostJobScreen> createState() => _FleetPostJobScreenState();
@@ -247,13 +248,13 @@ class _FleetPostJobScreenState extends State<FleetPostJobScreen> {
                 ),
                 const SizedBox(height: 20),
                 const Text(
-                  'Complete your profile first',
+                  'Continue to your job',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.2),
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Before posting a job you must fill in all required profile details so mechanics and billing can be processed correctly.',
+                  'Company, contact, and billing can be added anytime under Profile. Continue below to describe your job and get mechanics responding.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 12, height: 1.45),
                 ),
@@ -274,7 +275,7 @@ class _FleetPostJobScreenState extends State<FleetPostJobScreen> {
                           border: Border(bottom: BorderSide(color: AppColors.border)),
                         ),
                         child: const Text(
-                          'REQUIRED SECTIONS',
+                          'ADD ANYTIME IN PROFILE',
                           style: TextStyle(
                             color: AppColors.primary,
                             fontSize: 10,
@@ -302,7 +303,7 @@ class _FleetPostJobScreenState extends State<FleetPostJobScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: widget.onEditProfile,
+                    onPressed: widget.onContinueToJobForm,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.black,
@@ -325,7 +326,7 @@ class _FleetPostJobScreenState extends State<FleetPostJobScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'You will be redirected back here once saved.',
+                  'Opens the job form on this tab. Use Profile to add or edit fleet & payment details.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.textHint.withValues(alpha: 0.8), fontSize: 10),
                 ),

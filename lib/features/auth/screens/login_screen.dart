@@ -219,7 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => widget.onNavigate('role-select'),
+                    onTap: () => widget.onNavigate('role-select-signup'),
                     child: const Text(
                       'Create Account',
                       style: TextStyle(

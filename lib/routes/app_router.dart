@@ -41,8 +41,14 @@ abstract final class AppRouter {
       case 'mechanic-dashboard':
         router.go(AppRoutes.mechanicHome);
         return;
+      case 'company-dashboard':
+        router.go(AppRoutes.companyHome);
+        return;
       case 'role-select':
         router.go(AppRoutes.roleSelect);
+        return;
+      case 'role-select-signup':
+        router.go('${AppRoutes.roleSelect}?signup=1');
         return;
       case 'fleet-register':
         router.go(AppRoutes.fleetRegister);
@@ -120,13 +126,18 @@ abstract final class AppRouter {
           path: AppRoutes.register,
           builder: (context, state) => RoleSelectScreen(
             onNavigate: (id) => navigateAuth(context, id),
+            signupFlow: true,
           ),
         ),
         GoRoute(
           path: AppRoutes.roleSelect,
-          builder: (context, state) => RoleSelectScreen(
-            onNavigate: (id) => navigateAuth(context, id),
-          ),
+          builder: (context, state) {
+            final signup = state.uri.queryParameters['signup'] == '1';
+            return RoleSelectScreen(
+              onNavigate: (id) => navigateAuth(context, id),
+              signupFlow: signup,
+            );
+          },
         ),
         GoRoute(
           path: AppRoutes.fleetRegister,

@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -314,8 +315,8 @@ class _FleetBody extends StatelessWidget {
         return FleetPostJobScreen(
           profileComplete: vm.profileComplete,
           prefilled: vm.prefilledVehicle?.label,
-          onSubmit: () => vm.setTab('tracking'),
-          onEditProfile: () => vm.setTab('edit-profile'),
+          onSubmit: () => vm.setTab('dashboard'),
+          onContinueToJobForm: vm.unlockPostJobFormFromGate,
         );
       case 'tracking':
         return _FleetTrackingList(onOpenDetail: () => vm.setTab('tracking-detail'));
@@ -325,7 +326,7 @@ class _FleetBody extends StatelessWidget {
         return _FleetQuoteReceived(onDone: () => vm.setTab('tracking'));
       case 'profile':
         return _FleetProfile(
-          onEdit: () => vm.setTab('edit-profile'),
+          onEdit: () => vm.openFleetEditProfile(fromPostJobGate: false),
           onVehicles: vm.openVehicles,
           onPayment: vm.openPayment,
           onHelp: vm.openHelp,
@@ -337,7 +338,8 @@ class _FleetBody extends StatelessWidget {
       case 'edit-profile':
         return _FleetEditProfile(
           onSave: vm.markProfileComplete,
-          onCancel: () => vm.setTab('profile'),
+          onCancel: vm.cancelFleetEditProfile,
+          openedForPostJob: vm.isEditingProfileForPostJob,
         );
       case 'vehicle-detail':
         final v = vm.selectedVehicle;
@@ -4626,10 +4628,15 @@ class _FleetProfile extends StatelessWidget {
 }
 
 class _FleetEditProfile extends StatefulWidget {
-  const _FleetEditProfile({required this.onSave, required this.onCancel});
+  const _FleetEditProfile({
+    required this.onSave,
+    required this.onCancel,
+    this.openedForPostJob = false,
+  });
 
   final VoidCallback onSave;
   final VoidCallback onCancel;
+  final bool openedForPostJob;
 
   @override
   State<_FleetEditProfile> createState() => _FleetEditProfileState();
@@ -4784,29 +4791,40 @@ class _FleetEditProfileState extends State<_FleetEditProfile> {
                 children: [
                   _fleetCircleBackButton(onPressed: widget.onCancel),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'FLEET OPERATOR',
-                          style: TextStyle(
+                          widget.openedForPostJob ? 'POST JOB' : 'FLEET OPERATOR',
+                          style: const TextStyle(
                             color: AppColors.primary,
                             fontSize: 10,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 1.4,
                           ),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
-                          'Edit Profile',
-                          style: TextStyle(
+                          widget.openedForPostJob ? 'Complete your profile' : 'Edit Profile',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
                             letterSpacing: -0.2,
                           ),
                         ),
+                        if (widget.openedForPostJob) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Save to return to Post Job and finish your request.',
+                            style: TextStyle(
+                              color: AppColors.textMuted.withValues(alpha: 0.95),
+                              fontSize: 11,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -5188,6 +5206,16 @@ class _FleetPaymentOverlay extends StatefulWidget {
 class _FleetPaymentOverlayState extends State<_FleetPaymentOverlay> {
   late List<_FleetPayCardRow> _cards;
   int _defaultIndex = 0;
+  bool _showAddCard = false;
+
+  final _addCardFormKey = GlobalKey<FormState>();
+  late final TextEditingController _addCardNumber;
+  late final TextEditingController _addExpiry;
+  late final TextEditingController _addCvc;
+  late final TextEditingController _addCardholder;
+
+  static const _fieldFill = Color(0xFF1A1A1A);
+  static const _fieldBorder = Color(0xFF2A2A2A);
 
   @override
   void initState() {
@@ -5196,6 +5224,99 @@ class _FleetPaymentOverlayState extends State<_FleetPaymentOverlay> {
       _FleetPayCardRow(brand: 'Visa', last4: '4242', expiry: '12/26'),
       _FleetPayCardRow(brand: 'Mastercard', last4: '8888', expiry: '09/27'),
     ];
+    _addCardNumber = TextEditingController();
+    _addExpiry = TextEditingController();
+    _addCvc = TextEditingController();
+    _addCardholder = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _addCardNumber.dispose();
+    _addExpiry.dispose();
+    _addCvc.dispose();
+    _addCardholder.dispose();
+    super.dispose();
+  }
+
+  String _cardDigitsOnly(String s) => s.replaceAll(RegExp(r'\D'), '');
+
+  String _inferCardBrand(String digits) {
+    if (digits.isEmpty) return 'Card';
+    switch (digits[0]) {
+      case '4':
+        return 'Visa';
+      case '5':
+        return 'Mastercard';
+      case '3':
+        return 'Amex';
+      case '6':
+        return 'Discover';
+      default:
+        return 'Card';
+    }
+  }
+
+  InputDecoration _addCardDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: AppColors.textHint.withValues(alpha: 0.9), fontSize: 14),
+      filled: true,
+      fillColor: _fieldFill,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _fieldBorder, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.55), width: 1),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: AppColors.red.withValues(alpha: 0.7), width: 1),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: AppColors.red, width: 1),
+      ),
+    );
+  }
+
+  Widget _addCardFieldLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.9,
+        ),
+      ),
+    );
+  }
+
+  void _saveNewCard() {
+    if (_addCardFormKey.currentState?.validate() != true) return;
+    final digits = _cardDigitsOnly(_addCardNumber.text);
+    final last4 = digits.substring(digits.length - 4);
+    final brand = _inferCardBrand(digits);
+    final expiry = _addExpiry.text.trim();
+    setState(() {
+      _cards.add(_FleetPayCardRow(brand: brand, last4: last4, expiry: expiry));
+      if (_cards.length == 1) _defaultIndex = 0;
+      _showAddCard = false;
+    });
+    _addCardNumber.clear();
+    _addExpiry.clear();
+    _addCvc.clear();
+    _addCardholder.clear();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Card saved')));
   }
 
   void _removeAt(int i) {
@@ -5218,74 +5339,274 @@ class _FleetPaymentOverlayState extends State<_FleetPaymentOverlay> {
     return Material(
       color: Colors.black,
       child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 20, 16),
-              child: Row(
-                children: [
-                  _fleetCircleBackButton(onPressed: vm.closePayment),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Payment Methods',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: -0.2),
-                  ),
-                ],
+        child: _showAddCard ? _buildAddCardScreen() : _buildPaymentListScreen(vm),
+      ),
+    );
+  }
+
+  Widget _buildPaymentListScreen(FleetViewModel vm) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 20, 16),
+          child: Row(
+            children: [
+              _fleetCircleBackButton(onPressed: vm.closePayment),
+              const SizedBox(width: 12),
+              const Text(
+                'Payment Methods',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: -0.2),
               ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                children: [
-                  for (var i = 0; i < _cards.length; i++) ...[
-                    _FleetPaymentCardTile(
-                      row: _cards[i],
-                      isDefault: i == _defaultIndex,
-                      onSetDefault: _cards.length > 1 && i != _defaultIndex ? () => setState(() => _defaultIndex = i) : null,
-                      onRemove: () => _removeAt(i),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            children: [
+              for (var i = 0; i < _cards.length; i++) ...[
+                _FleetPaymentCardTile(
+                  row: _cards[i],
+                  isDefault: i == _defaultIndex,
+                  onSetDefault: _cards.length > 1 && i != _defaultIndex ? () => setState(() => _defaultIndex = i) : null,
+                  onRemove: () => _removeAt(i),
+                ),
+                const SizedBox(height: 12),
+              ],
+              Material(
+                color: const Color(0xFF121212),
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: () => setState(() => _showAddCard = true),
+                  borderRadius: BorderRadius.circular(12),
+                  child: CustomPaint(
+                    painter: _FleetDashedBorderPainter(
+                      color: const Color(0xFF4B5563),
+                      strokeWidth: 1.5,
+                      radius: 12,
                     ),
-                    const SizedBox(height: 12),
-                  ],
-                  Material(
-                    color: const Color(0xFF121212),
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Add new card (demo)')),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: CustomPaint(
-                        painter: _FleetDashedBorderPainter(
-                          color: const Color(0xFF4B5563),
-                          strokeWidth: 1.5,
-                          radius: 12,
-                        ),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 22),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            '+ ADD NEW CARD',
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 22),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add_rounded, color: AppColors.textMuted, size: 22),
+                          const SizedBox(width: 8),
+                          Text(
+                            'ADD NEW CARD',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: AppColors.textMuted,
                               fontSize: 12,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.8,
                             ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+      ],
+    );
+  }
+
+  Widget _buildAddCardScreen() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 20, 12),
+          child: Row(
+            children: [
+              _fleetCircleBackButton(onPressed: () => setState(() => _showAddCard = false)),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Payment Methods',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: -0.2),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF121212),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_rounded, color: AppColors.textMuted, size: 22),
+                    const SizedBox(width: 8),
+                    Text(
+                      'ADD NEW CARD',
+                      style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0A0A0A),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primary, width: 1),
+                ),
+                child: Form(
+                  key: _addCardFormKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'NEW CARD DETAILS',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      _addCardFieldLabel('CARD NUMBER'),
+                      TextFormField(
+                        controller: _addCardNumber,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(19)],
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        decoration: _addCardDecoration('1234 5678 9012 3456'),
+                        validator: (v) {
+                          final d = _cardDigitsOnly(v ?? '');
+                          if (d.length < 15) return 'Enter a valid card number';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _addCardFieldLabel('EXPIRY'),
+                                TextFormField(
+                                  controller: _addExpiry,
+                                  keyboardType: TextInputType.datetime,
+                                  inputFormatters: [_FleetExpiryInputFormatter(), LengthLimitingTextInputFormatter(5)],
+                                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                                  decoration: _addCardDecoration('MM/YY'),
+                                  validator: (v) {
+                                    final t = (v ?? '').trim();
+                                    if (!RegExp(r'^\d{2}/\d{2}$').hasMatch(t)) return 'Use MM/YY';
+                                    final mm = int.tryParse(t.substring(0, 2));
+                                    if (mm == null || mm < 1 || mm > 12) return 'Invalid month';
+                                    return null;
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _addCardFieldLabel('CVC'),
+                                TextFormField(
+                                  controller: _addCvc,
+                                  obscureText: true,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
+                                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                                  decoration: _addCardDecoration('123'),
+                                  validator: (v) {
+                                    final l = (v ?? '').trim().length;
+                                    if (l < 3 || l > 4) return 'Invalid CVC';
+                                    return null;
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _addCardFieldLabel('CARDHOLDER NAME'),
+                      TextFormField(
+                        controller: _addCardholder,
+                        textCapitalization: TextCapitalization.words,
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        decoration: _addCardDecoration('John Smith'),
+                        validator: (v) {
+                          if ((v ?? '').trim().length < 2) return 'Enter cardholder name';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 22),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _saveNewCard,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: const StadiumBorder(),
+                          ),
+                          child: const Text(
+                            'SAVE CARD',
+                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.9),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Inserts `/` after MM when typing expiry (MM/YY).
+class _FleetExpiryInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    var t = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
+    if (t.length > 4) t = t.substring(0, 4);
+    final buf = StringBuffer();
+    for (var i = 0; i < t.length; i++) {
+      if (i == 2) buf.write('/');
+      buf.write(t[i]);
+    }
+    final s = buf.toString();
+    return TextEditingValue(
+      text: s,
+      selection: TextSelection.collapsed(offset: s.length),
     );
   }
 }

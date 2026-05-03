@@ -3,20 +3,23 @@ import '../../../core/theme/app_colors.dart';
 import '../../../widgets/buttons.dart';
 
 class RoleSelectScreen extends StatelessWidget {
-  const RoleSelectScreen({super.key, required this.onNavigate});
+  const RoleSelectScreen({super.key, required this.onNavigate, this.signupFlow = false});
 
   final void Function(String) onNavigate;
+  /// When true, Continue goes to create-account screens; when false, to login with selected role.
+  final bool signupFlow;
 
   @override
   Widget build(BuildContext context) {
-    return _RoleSelectBody(onNavigate: onNavigate);
+    return _RoleSelectBody(onNavigate: onNavigate, signupFlow: signupFlow);
   }
 }
 
 class _RoleSelectBody extends StatefulWidget {
-  const _RoleSelectBody({required this.onNavigate});
+  const _RoleSelectBody({required this.onNavigate, required this.signupFlow});
 
   final void Function(String) onNavigate;
+  final bool signupFlow;
 
   @override
   State<_RoleSelectBody> createState() => _RoleSelectBodyState();
@@ -69,9 +72,15 @@ class _RoleSelectBodyState extends State<_RoleSelectBody> {
                 label: _selected == null ? 'Continue as ...' : 'Continue as ${_selected == 'fleet' ? 'Fleet Operator' : 'Service Provider'}',
                 onPressed: _selected == null
                     ? null
-                    : () => widget.onNavigate(
-                          _selected == 'fleet' ? '/login?role=fleet' : '/login?role=mechanic',
-                        ),
+                    : () {
+                        if (widget.signupFlow) {
+                          widget.onNavigate(_selected == 'fleet' ? 'fleet-register' : 'mechanic-register');
+                        } else {
+                          widget.onNavigate(
+                            _selected == 'fleet' ? '/login?role=fleet' : '/login?role=mechanic',
+                          );
+                        }
+                      },
               ),
             ],
           ),

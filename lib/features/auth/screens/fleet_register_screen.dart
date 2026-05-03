@@ -52,7 +52,7 @@ class _FleetRegisterBodyState extends State<_FleetRegisterBody> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   TextButton.icon(
-                    onPressed: () => widget.onNavigate('role-select'),
+                    onPressed: () => widget.onNavigate('role-select-signup'),
                     icon: const Icon(Icons.chevron_left, size: 16, color: AppColors.textGray),
                     label: const Text('Back', style: TextStyle(color: AppColors.textGray, fontSize: 12)),
                   ),
