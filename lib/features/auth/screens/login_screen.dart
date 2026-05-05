@@ -21,7 +21,12 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   static const Color _kWrench = Color(0xFF000000);
 
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+
   bool _obscurePassword = true;
+  bool _submitting = false;
+  String? _error;
 
   static InputDecoration _fieldDecoration({String? hint, Widget? prefix, Widget? suffix}) {
     const radius = 12.0;
@@ -48,6 +53,50 @@ class _LoginScreenState extends State<LoginScreen> {
         borderSide: const BorderSide(color: AppColors.borderLight, width: 1),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    final email = _emailCtrl.text.trim();
+    final password = _passCtrl.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      setState(() {
+        _submitting = false;
+        _error = 'Please enter email and password.';
+      });
+      return;
+    }
+
+    try {
+      await context.read<AuthViewModel>().loginAs(email, password, widget.role);
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Login successful')),
+      );
+
+      widget.onNavigate(widget.role == UserRole.mechanic ? 'mechanic-dashboard' : 'fleet-dashboard');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
   }
 
   @override
@@ -132,6 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   TextField(
+                    controller: _emailCtrl,
                     keyboardType: TextInputType.emailAddress,
                     style: const TextStyle(
                       color: AppColors.textGray,
@@ -165,6 +215,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   TextField(
+                    controller: _passCtrl,
                     obscureText: _obscurePassword,
                     style: const TextStyle(
                       color: AppColors.textGray,
@@ -194,14 +245,30 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ],
               ),
+              if (_error != null) ...[
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A0B0B),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF3A1414)),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(
+                      color: Color(0xFFFFB4B4),
+                      fontSize: 13,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               PrimaryButton(
                 label: 'SIGN IN AS $roleLabel',
-                onPressed: () async {
-                  await context.read<AuthViewModel>().quickLogin(widget.role);
-                  if (!context.mounted) return;
-                  widget.onNavigate(widget.role == UserRole.mechanic ? 'mechanic-dashboard' : 'fleet-dashboard');
-                },
+                onPressed: _submitting ? null : _submit,
               ),
               const SizedBox(height: 100),
               const Divider(height: 1, color: AppColors.border),

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'core/theme/app_theme.dart';
 import 'data/repositories/app_repository.dart';
+import 'data/repositories/api_auth_repository.dart';
 import 'features/auth/viewmodel/auth_viewmodel.dart';
 import 'routes/app_router.dart';
 
@@ -17,7 +18,7 @@ Future<void> main() async {
     ),
   );
 
-  final authRepository = MemoryAuthRepository();
+  final authRepository = ApiAuthRepository();
   final jobRepository = MemoryJobRepository();
   final authViewModel = AuthViewModel(authRepository);
   await authViewModel.loadSession();

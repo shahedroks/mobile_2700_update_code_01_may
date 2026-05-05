@@ -25,8 +25,7 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   Future<void> loginAs(String email, String password, UserRole role) async {
-    final s = Session(email: email, role: role, displayName: email.split('@').first);
-    await _authRepository.saveSession(s);
+    final s = await _authRepository.login(email: email, password: password, roleHint: role);
     _session = s;
     notifyListeners();
   }
@@ -37,7 +36,12 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    await _authRepository.clearSession();
+    final refresh = _session?.refreshToken;
+    if (refresh != null && refresh.trim().isNotEmpty) {
+      await _authRepository.logout(refreshToken: refresh);
+    } else {
+      await _authRepository.clearSession();
+    }
     _session = null;
     registrationRole = null;
     notifyListeners();

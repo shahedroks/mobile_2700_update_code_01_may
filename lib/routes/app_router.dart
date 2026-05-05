@@ -70,7 +70,7 @@ abstract final class AppRouter {
 
   static GoRouter create(AuthViewModel auth) {
     return GoRouter(
-      initialLocation: AppRoutes.splash,
+      initialLocation: AppRoutes.introLoader,
       refreshListenable: auth,
       redirect: (context, state) {
         final path = state.matchedLocation;

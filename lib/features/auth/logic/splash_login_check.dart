@@ -13,6 +13,6 @@ String homeRouteForSession(Session session) => switch (session.role) {
 /// After intro/splash, returns login or role home based on stored session.
 Future<String> resolvePostSplashLocation(AuthRepository auth) async {
   final session = await auth.getSession();
-  if (session == null) return AppRoutes.login;
+  if (session == null) return AppRoutes.splash;
   return homeRouteForSession(session);
 }

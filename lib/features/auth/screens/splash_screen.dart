@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -7,35 +8,37 @@ class SplashScreen extends StatelessWidget {
 
   final void Function(String) onNavigate;
 
-  /// Screenshot reference: vibrant yellow (~#FFCC00), black, white.
+  static const Color _kBg = Color(0xFF080808);
   static const Color _kAccentYellow = Color(0xFFFFCC00);
   static const Color _kWrench = Color(0xFF000000);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF000000),
+      backgroundColor: _kBg,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF000000),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    _kAccentYellow.withValues(alpha: 0.06),
-                    const Color(0xFF000000),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          const Positioned.fill(child: ColoredBox(color: _kBg)),
           const Positioned.fill(
             child: CustomPaint(
               painter: _SplashDiagonalStripesPainter(),
+            ),
+          ),
+          // Top glow (matches React: yellow blur at top-center).
+          Positioned(
+            top: -30,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                width: 300,
+                height: 200,
+                decoration: BoxDecoration(
+                  color: _kAccentYellow.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
             ),
           ),
           SafeArea(
@@ -48,33 +51,57 @@ class SplashScreen extends StatelessWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
+                          // Icon block with soft glow behind.
+                          SizedBox(
                             width: 96,
                             height: 96,
-                            clipBehavior: Clip.antiAlias,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: _kAccentYellow,
-                              borderRadius: BorderRadius.circular(28),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: _kAccentYellow.withValues(alpha: 0.45),
-                                  blurRadius: 28,
-                                  spreadRadius: 0,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Positioned.fill(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(28),
+                                    child: BackdropFilter(
+                                      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          color: _kAccentYellow.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(28),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  width: 96,
+                                  height: 96,
+                                  clipBehavior: Clip.antiAlias,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: _kAccentYellow,
+                                    borderRadius: BorderRadius.circular(28),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: _kAccentYellow.withValues(alpha: 0.30),
+                                        blurRadius: 20,
+                                        spreadRadius: 0,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Transform.translate(
+                                    offset: const Offset(-1.0, -1.5),
+                                    child: Transform.rotate(
+                                      angle: -math.pi / -2,
+                                      alignment: Alignment.center,
+                                      child: const Icon(
+                                        Icons.build_outlined,
+                                        size: 48,
+                                        color: _kWrench,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ],
-                            ),
-                            child: Transform.translate(
-                              offset: const Offset(-1.0, -1.5),
-                              child: Transform.rotate(
-                                angle: -math.pi / -2,
-                                alignment: Alignment.center,
-                                child: const Icon(
-                                  Icons.build_outlined,
-                                  size: 48,
-                                  color: _kWrench,
-                                ),
-                              ),
                             ),
                           ),
                           const SizedBox(height: 28),
@@ -84,10 +111,17 @@ class SplashScreen extends StatelessWidget {
                               textAlign: TextAlign.center,
                               TextSpan(
                                 style: const TextStyle(
-                                  fontSize: 46,
+                                  fontSize: 52,
                                   fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.4,
-                                  height: 1.05,
+                                  letterSpacing: -0.2,
+                                  height: 1.0,
+                                  shadows: [
+                                    Shadow(
+                                      offset: Offset(0, 3),
+                                      blurRadius: 0,
+                                      color: Color(0xFF000000),
+                                    ),
+                                  ],
                                 ),
                                 children: [
                                   const TextSpan(
@@ -102,45 +136,35 @@ class SplashScreen extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 10),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Expanded(
-                                child: Container(
-                                  height: 1,
-                                  color: _kAccentYellow,
-                                ),
-                              ),
+                              Container(height: 1, width: 56, color: _kAccentYellow.withValues(alpha: 0.5)),
                               const Padding(
                                 padding: EdgeInsets.symmetric(horizontal: 14),
                                 child: Text(
                                   'PRO',
                                   style: TextStyle(
                                     color: _kAccentYellow,
-                                    fontSize: 13,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: 4,
                                   ),
                                 ),
                               ),
-                              Expanded(
-                                child: Container(
-                                  height: 1,
-                                  color: _kAccentYellow,
-                                ),
-                              ),
+                              Container(height: 1, width: 56, color: _kAccentYellow.withValues(alpha: 0.5)),
                             ],
                           ),
                           const SizedBox(height: 24),
                           const Text(
-                            'Find repair and maintenance support when your vehicle needs it.',
+                            'Emergency breakdown assistance. Connect\ninstantly with certified mechanics.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Color(0xFFFFFFFF),
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.w400,
-                              height: 1.5,
+                              height: 1.6,
                             ),
                           ),
                         ],
@@ -189,7 +213,7 @@ class SplashScreen extends StatelessWidget {
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        onPressed: () => onNavigate('role-select'),
+                        onPressed: () => onNavigate('login'),
                         child: Text.rich(
                           TextSpan(
                             style: const TextStyle(
@@ -199,10 +223,10 @@ class SplashScreen extends StatelessWidget {
                               color: Color(0xFFFFFFFF),
                             ),
                             children: [
-                              const TextSpan(text: 'Continue to login as '),
+                              const TextSpan(text: 'Already registered? '),
                               TextSpan(
-                                text: 'Fleet / Mechanic',
-                                style: const TextStyle(
+                                text: 'Login',
+                                style: TextStyle(
                                   color: _kAccentYellow,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -231,11 +255,13 @@ class _SplashDiagonalStripesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = _stripe.withValues(alpha: 0.08)
+      ..color = _stripe.withValues(alpha: 0.035)
       ..strokeWidth = 1
       ..isAntiAlias = true;
 
-    const double spacing = 8;
+    // Match React: repeating diagonal stripes with wide gaps.
+    // Equivalent to `repeating-linear-gradient(45deg, yellow 0..2px, transparent ..28px)`.
+    const double spacing = 28;
     for (double x = -size.height; x < size.width + size.height; x += spacing) {
       canvas.drawLine(Offset(x, 0), Offset(x + size.height, size.height), paint);
     }

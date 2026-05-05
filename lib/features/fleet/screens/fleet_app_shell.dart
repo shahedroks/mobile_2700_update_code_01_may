@@ -70,11 +70,6 @@ const List<FleetJobSummary> _kDashboardDemoJobs = [
   ),
 ];
 
-List<FleetJobSummary> _dashboardJobsForUi(List<FleetJobSummary> repo) {
-  final byId = {for (final j in repo) j.id: j};
-  return _kDashboardDemoJobs.map((d) => byId[d.id] ?? d).toList();
-}
-
 /// Completed jobs on fleet dashboard (matches `FleetDashboard` in `check.tsx`).
 class _FleetCompletedJob {
   const _FleetCompletedJob({
@@ -259,7 +254,7 @@ class FleetAppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (ctx) => FleetViewModel(ctx.read<JobRepository>()),
+      create: (ctx) => FleetViewModel(ctx.read<JobRepository>(), ctx.read<AuthViewModel>()),
       child: const _FleetScaffold(),
     );
   }
@@ -271,7 +266,7 @@ class _FleetScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<FleetViewModel>();
-    final jobs = context.read<JobRepository>().fleetActiveJobs();
+    final jobs = vm.activeJobs;
 
     return Scaffold(
       backgroundColor: _FleetDashTheme.bgBlack,
@@ -1656,10 +1651,11 @@ class _FleetDashboardState extends State<_FleetDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    final vm = context.watch<FleetViewModel>();
     const companyName = 'Logistix Transport';
-    final displayJobs = _dashboardJobsForUi(widget.jobs);
-    final activeJobCount = displayJobs.length;
-    final completedJobCount = _kFleetCompletedDemoJobs.length;
+    final displayJobs = widget.jobs.isNotEmpty ? widget.jobs : _kDashboardDemoJobs;
+    final activeJobCount = widget.jobs.length;
+    final completedJobCount = vm.hasLoadedOnce ? vm.completedJobs.length : _kFleetCompletedDemoJobs.length;
     FleetJobSummary? awaitingJob;
     for (final j in displayJobs) {
       if (j.status.toUpperCase().contains('AWAITING')) {
@@ -1810,6 +1806,20 @@ class _FleetDashboardState extends State<_FleetDashboard> {
     }
 
     Widget marchSpendCard() {
+      final vm = context.watch<FleetViewModel>();
+      final month = (vm.spendMonth.trim().isEmpty) ? 'This Month' : '${vm.spendMonth} Spend';
+      final sym = switch (vm.spendCurrency.toUpperCase()) {
+        'GBP' => '£',
+        'USD' => r'$',
+        'EUR' => '€',
+        _ => '',
+      };
+      final total = '$sym${vm.spendTotal.round()}';
+      final budget = vm.spendBudget;
+      final util = vm.spendUtilizationPct ??
+          ((budget != null && budget > 0) ? (vm.spendTotal / budget) * 100.0 : null);
+      final progress = ((util ?? 0) / 100.0).clamp(0.0, 1.0);
+
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
@@ -1820,16 +1830,16 @@ class _FleetDashboardState extends State<_FleetDashboard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'March Spend',
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                  month,
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
                 ),
                 Text(
-                  '£4,250',
-                  style: TextStyle(color: AppColors.primary, fontSize: 18, fontWeight: FontWeight.w900),
+                  total,
+                  style: const TextStyle(color: AppColors.primary, fontSize: 18, fontWeight: FontWeight.w900),
                 ),
               ],
             ),
@@ -1839,7 +1849,7 @@ class _FleetDashboardState extends State<_FleetDashboard> {
               child: SizedBox(
                 height: 8,
                 child: LinearProgressIndicator(
-                  value: 0.64,
+                  value: progress,
                   backgroundColor: const Color(0xFF2A2A2A),
                   valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
                 ),
@@ -1847,7 +1857,9 @@ class _FleetDashboardState extends State<_FleetDashboard> {
             ),
             const SizedBox(height: 10),
             Text(
-              '64% of monthly budget (£6,500)',
+              (budget == null || budget <= 0)
+                  ? 'No budget set'
+                  : '${(util ?? 0).round()}% of monthly budget ($sym${budget.round()})',
               style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.9), fontSize: 11, height: 1.3),
             ),
           ],
@@ -1938,30 +1950,36 @@ class _FleetDashboardState extends State<_FleetDashboard> {
                                     ],
                                   ),
                                 ),
-                                Flexible(
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 6,
-                                        height: 6,
-                                        decoration: BoxDecoration(shape: BoxShape.circle, color: statusDot),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Flexible(
-                                        child: Text(
-                                          j.status,
-                                          textAlign: TextAlign.right,
-                                          maxLines: 2,
-                                          style: TextStyle(
-                                            color: statusColor,
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: 0.4,
+                                const SizedBox(width: 10),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 130),
+                                  child: Align(
+                                    alignment: Alignment.topRight,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 6,
+                                          height: 6,
+                                          decoration: BoxDecoration(shape: BoxShape.circle, color: statusDot),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Flexible(
+                                          child: Text(
+                                            j.status,
+                                            textAlign: TextAlign.right,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: statusColor,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w900,
+                                              letterSpacing: 0.4,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ],
@@ -2179,19 +2197,80 @@ class _FleetDashboardState extends State<_FleetDashboard> {
       body: Stack(
         clipBehavior: Clip.none,
         children: [
-          ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-            children: [
+          RefreshIndicator(
+            color: AppColors.primary,
+            backgroundColor: const Color(0xFF111111),
+            onRefresh: vm.refresh,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              children: [
           Row(
             children: [
-              statChip(icon: Icons.bolt_rounded, dot: AppColors.primary, accent: AppColors.primary, value: '3', caption: 'ACTIVE'),
+              statChip(
+                icon: Icons.bolt_rounded,
+                dot: AppColors.primary,
+                accent: AppColors.primary,
+                value: vm.activeCount > 0 ? '${vm.activeCount}' : '0',
+                caption: 'ACTIVE',
+              ),
               const SizedBox(width: 10),
-              statChip(icon: Icons.warning_amber_rounded, dot: AppColors.red, accent: AppColors.red, value: '1', caption: 'AWAITING'),
+              statChip(
+                icon: Icons.warning_amber_rounded,
+                dot: AppColors.red,
+                accent: AppColors.red,
+                value: vm.awaitingCount > 0 ? '${vm.awaitingCount}' : '0',
+                caption: 'AWAITING',
+              ),
               const SizedBox(width: 10),
-              statChip(icon: Icons.check_circle_outline_rounded, dot: AppColors.green, accent: AppColors.green, value: '14', caption: 'THIS MONTH'),
+              statChip(
+                icon: Icons.check_circle_outline_rounded,
+                dot: AppColors.green,
+                accent: AppColors.green,
+                value: vm.monthCompletedCount > 0 ? '${vm.monthCompletedCount}' : '0',
+                caption: 'THIS MONTH',
+              ),
             ],
           ),
           const SizedBox(height: 18),
+          if (vm.loading)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Updating dashboard…',
+                    style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          if (!vm.loading && vm.loadError != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded, color: AppColors.red, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      vm.loadError!,
+                      style: TextStyle(color: AppColors.red.withValues(alpha: 0.95), fontSize: 12, height: 1.3),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: vm.refresh,
+                    style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
           if (hasAwaitingApproval) ...[
             Material(
               color: Colors.transparent,
@@ -2411,10 +2490,48 @@ class _FleetDashboardState extends State<_FleetDashboard> {
           ),
           const SizedBox(height: 16),
           if (_showActiveJobs) ...displayJobs.map(activeJobCard),
-          if (!_showActiveJobs) ..._kFleetCompletedDemoJobs.map(completedJobCard),
+          if (!_showActiveJobs)
+            ...((vm.hasLoadedOnce)
+                ? (vm.completedJobs.isEmpty
+                    ? [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFF1E1E1E)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.check_circle_outline_rounded, color: AppColors.textMuted, size: 18),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'No completed jobs yet.',
+                                  style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ]
+                    : vm.completedJobs.map((j) {
+                        final d = _FleetCompletedJob(
+                          id: j.id,
+                          truck: j.truck,
+                          issue: j.issue,
+                          mechanic: j.mechanic,
+                          rating: j.rating,
+                          completedDate: j.completedDate,
+                          total: j.total,
+                        );
+                        return completedJobCard(d);
+                      }))
+                : _kFleetCompletedDemoJobs.map(completedJobCard)),
           const SizedBox(height: 8),
           marchSpendCard(),
-            ],
+              ],
+            ),
           ),
           if (_completionJob != null)
             _FleetCompletionReviewOverlay(

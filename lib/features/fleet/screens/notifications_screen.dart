@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../data/services/fleet_api_service.dart';
+import '../../auth/viewmodel/auth_viewmodel.dart';
 import '../viewmodel/fleet_viewmodel.dart';
 
 /// Fleet notifications (`NotificationsScreen` / fleet reference UI).
@@ -36,45 +38,107 @@ class _FleetNotificationsOverlayState extends State<FleetNotificationsOverlay> {
   static const Color _divider = Color(0xFF252520);
   static const Color _bodyMuted = Color(0xFFA8A29E);
   static const Color _quotePurple = Color(0xFF6366F1);
+  static const Color _supportBlue = Color(0xFF3B82F6);
 
-  late final List<_NotifRowModel> _rows;
+  final _api = FleetApiService();
+  List<_NotifRowModel> _rows = const [];
+  bool _loading = true;
+  String? _error;
+  int _unreadCountFromApi = 0;
 
   @override
   void initState() {
     super.initState();
-    _rows = [
-      _NotifRowModel(
-        headline: 'New Quote Received',
-        detail: 'Deon van Wyk quoted £145 for TF-8821',
-        when: '2 min ago',
-        unread: true,
-        leading: _leadingSolid(_quotePurple, Icons.payments_rounded),
-      ),
-      _NotifRowModel(
-        headline: 'Quote Accepted',
-        detail: 'You accepted the quote. Waiting for mechanic to start journey',
-        when: '1 hr ago',
-        unread: true,
-        leading: _leadingSolid(AppColors.green, Icons.check_rounded),
-      ),
-      _NotifRowModel(
-        headline: 'Mechanic Started Journey',
-        detail: 'Deon is on the way to your vehicle, ETA 15 min',
-        when: '1 hr ago',
-        unread: false,
-        leading: _leadingSolid(AppColors.red, Icons.directions_car_rounded),
-      ),
-      _NotifRowModel(
-        headline: 'Job Completed',
-        detail: 'Please approve completion for TF-8801',
-        when: '2 hrs ago',
-        unread: false,
-        leading: _leadingSolid(AppColors.green, Icons.check_rounded),
-      ),
-    ];
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  int get _unreadCount => _rows.where((r) => r.unread).length;
+  int get _unreadCount => _unreadCountFromApi > 0 ? _unreadCountFromApi : _rows.where((r) => r.unread).length;
+
+  static String _timeAgo(String iso) {
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+      if (diff.inHours < 24) return '${diff.inHours} hr ago';
+      return '${diff.inDays} day ago';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static ({Color bg, IconData icon}) _iconForType(String type) {
+    switch (type.toUpperCase()) {
+      case 'QUOTE_RECEIVED':
+        return (bg: _quotePurple, icon: Icons.request_quote_rounded);
+      case 'JOB_UPDATE':
+        return (bg: AppColors.red, icon: Icons.directions_car_rounded);
+      case 'SUPPORT_TICKET_CREATED':
+        return (bg: _supportBlue, icon: Icons.support_agent_rounded);
+      default:
+        return (bg: const Color(0xFF374151), icon: Icons.notifications_rounded);
+    }
+  }
+
+  Future<void> _load() async {
+    final token = context.read<AuthViewModel>().session?.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      setState(() {
+        _loading = false;
+        _error = 'Missing access token';
+        _rows = const [];
+        _unreadCountFromApi = 0;
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final res = await _api.fetchNotifications(accessToken: token, page: 1, limit: 20);
+      final meta = (res['meta'] is Map<String, dynamic>) ? res['meta'] as Map<String, dynamic> : <String, dynamic>{};
+      final unreadCount = (meta['unreadCount'] is num) ? (meta['unreadCount'] as num).toInt() : 0;
+
+      final data = res['data'];
+      final rows = <_NotifRowModel>[];
+      if (data is List) {
+        for (final item in data) {
+          if (item is! Map) continue;
+          final m = item.cast<String, dynamic>();
+          final type = (m['type'] as String?) ?? '';
+          final title = (m['title'] as String?) ?? '';
+          final body = (m['body'] as String?) ?? '';
+          final createdAt = (m['createdAt'] as String?) ?? '';
+          final isRead = (m['isRead'] is bool) ? m['isRead'] as bool : false;
+
+          final cfg = _iconForType(type);
+          rows.add(
+            _NotifRowModel(
+              headline: title.isEmpty ? type : title,
+              detail: body,
+              when: createdAt.isEmpty ? '' : _timeAgo(createdAt),
+              unread: !isRead,
+              leading: _leadingSolid(cfg.bg, cfg.icon),
+            ),
+          );
+        }
+      }
+
+      setState(() {
+        _rows = rows;
+        _unreadCountFromApi = unreadCount;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
+  }
 
   static Widget _leadingSolid(Color bg, IconData icon) {
     return Container(
@@ -94,6 +158,7 @@ class _FleetNotificationsOverlayState extends State<FleetNotificationsOverlay> {
       for (final r in _rows) {
         r.unread = false;
       }
+      _unreadCountFromApi = 0;
     });
   }
 
@@ -179,82 +244,120 @@ class _FleetNotificationsOverlayState extends State<FleetNotificationsOverlay> {
                 ),
               ),
               Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  itemCount: _rows.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1, thickness: 1, color: _divider),
-                  itemBuilder: (context, i) {
-                    final r = _rows[i];
-                    return Material(
-                      color: r.unread ? _unreadRowBg : _bg,
-                      child: InkWell(
-                        onTap: () {
-                          if (!r.unread) return;
-                          setState(() => r.unread = false);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              r.leading,
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      r.headline,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      r.detail,
-                                      style: const TextStyle(
-                                        color: _bodyMuted,
-                                        fontSize: 13,
-                                        height: 1.4,
-                                        fontWeight: FontWeight.w400,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      r.when,
-                                      style: TextStyle(
-                                        color: AppColors.textMuted.withValues(alpha: 0.95),
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              if (r.unread)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 6),
-                                  child: Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: const BoxDecoration(
-                                      color: AppColors.primary,
-                                      shape: BoxShape.circle,
-                                    ),
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                    : (_error != null)
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.error_outline_rounded, color: AppColors.red, size: 28),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    _error!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: _bodyMuted, fontSize: 13, height: 1.35),
                                   ),
-                                )
-                              else
-                                const SizedBox(width: 8),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                                  const SizedBox(height: 12),
+                                  ElevatedButton(
+                                    onPressed: _load,
+                                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.black),
+                                    child: const Text('Retry'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : (_rows.isEmpty)
+                            ? const Center(
+                                child: Text(
+                                  'All caught up',
+                                  style: TextStyle(color: _bodyMuted, fontSize: 13, fontWeight: FontWeight.w600),
+                                ),
+                              )
+                            : ListView.separated(
+                                padding: const EdgeInsets.only(bottom: 24),
+                                itemCount: _rows.length,
+                                separatorBuilder: (_, __) => const Divider(height: 1, thickness: 1, color: _divider),
+                                itemBuilder: (context, i) {
+                                  final r = _rows[i];
+                                  return Material(
+                                    color: r.unread ? _unreadRowBg : _bg,
+                                    child: InkWell(
+                                      onTap: () {
+                                        if (!r.unread) return;
+                                        setState(() {
+                                          r.unread = false;
+                                          _unreadCountFromApi = (_unreadCountFromApi - 1).clamp(0, 999999);
+                                        });
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            r.leading,
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    r.headline,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 15,
+                                                      fontWeight: FontWeight.w800,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Text(
+                                                    r.detail,
+                                                    style: const TextStyle(
+                                                      color: _bodyMuted,
+                                                      fontSize: 13,
+                                                      height: 1.4,
+                                                      fontWeight: FontWeight.w400,
+                                                    ),
+                                                  ),
+                                                  if (r.when.trim().isNotEmpty) ...[
+                                                    const SizedBox(height: 8),
+                                                    Text(
+                                                      r.when,
+                                                      style: TextStyle(
+                                                        color: AppColors.textMuted.withValues(alpha: 0.95),
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            if (r.unread)
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 6),
+                                                child: Container(
+                                                  width: 8,
+                                                  height: 8,
+                                                  decoration: const BoxDecoration(
+                                                    color: AppColors.primary,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                              )
+                                            else
+                                              const SizedBox(width: 8),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
               ),
             ],
           ),

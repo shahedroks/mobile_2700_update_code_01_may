@@ -11,6 +11,16 @@ abstract class AuthRepository {
   Future<Session?> getSession();
   Future<void> saveSession(Session session);
   Future<void> clearSession();
+
+  /// Real backend login. Implementations may ignore [roleHint] if backend returns role.
+  Future<Session> login({
+    required String email,
+    required String password,
+    required UserRole roleHint,
+  });
+
+  /// Optional backend logout (best-effort).
+  Future<void> logout({required String refreshToken});
 }
 
 class MemoryAuthRepository implements AuthRepository {
@@ -27,6 +37,23 @@ class MemoryAuthRepository implements AuthRepository {
   @override
   Future<void> saveSession(Session session) async {
     _session = session;
+  }
+
+  @override
+  Future<Session> login({
+    required String email,
+    required String password,
+    required UserRole roleHint,
+  }) async {
+    final s = Session(
+        email: email, role: roleHint, displayName: email.split('@').first);
+    await saveSession(s);
+    return s;
+  }
+
+  @override
+  Future<void> logout({required String refreshToken}) async {
+    await clearSession();
   }
 }
 

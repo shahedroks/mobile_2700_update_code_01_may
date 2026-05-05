@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../data/repositories/app_repository.dart';
 import '../logic/splash_login_check.dart';
+import 'truckfix_loading_screen.dart';
 
 /// Session bootstrap before the rest of the auth stack.
 class IntroLoaderScreen extends StatefulWidget {
@@ -23,18 +24,16 @@ class _IntroLoaderScreenState extends State<IntroLoaderScreen> {
   Future<void> _route() async {
     if (!mounted) return;
     final auth = context.read<AuthRepository>();
-    final next = await resolvePostSplashLocation(auth);
+    final nextFuture = resolvePostSplashLocation(auth);
+    final minFuture = Future<void>.delayed(const Duration(milliseconds: 2200));
+    final next = await nextFuture;
+    await minFuture;
     if (!mounted) return;
     context.go(next);
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFF000000),
-      body: Center(
-        child: CircularProgressIndicator(color: Color(0xFFFBBF24)),
-      ),
-    );
+    return const TruckFixLoadingScreen();
   }
 }
