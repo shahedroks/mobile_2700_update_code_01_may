@@ -88,7 +88,15 @@ class _LoginScreenState extends State<LoginScreen> {
         const SnackBar(content: Text('Login successful')),
       );
 
-      widget.onNavigate(widget.role == UserRole.mechanic ? 'mechanic-dashboard' : 'fleet-dashboard');
+      final resolvedRole = context.read<AuthViewModel>().session?.role ?? widget.role;
+      widget.onNavigate(
+        switch (resolvedRole) {
+          UserRole.mechanic => 'mechanic-dashboard',
+          UserRole.company => 'company-dashboard',
+          UserRole.employee => 'employee-dashboard',
+          _ => 'fleet-dashboard',
+        },
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());

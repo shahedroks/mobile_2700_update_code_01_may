@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/models/fleet_job_summary.dart';
+import '../../../data/models/fleet_me_profile.dart';
 import '../../../data/models/vehicle.dart';
 import '../../../data/repositories/app_repository.dart';
 import '../../../data/services/fleet_api_service.dart';
+import '../../../data/services/users_api_service.dart';
 import '../../auth/viewmodel/auth_viewmodel.dart';
 
 class FleetCompletedJob {
@@ -27,13 +29,20 @@ class FleetCompletedJob {
 }
 
 class FleetViewModel extends ChangeNotifier {
-  FleetViewModel(this._jobs, this._auth, {FleetApiService? api}) : _api = api ?? FleetApiService() {
+  FleetViewModel(
+    this._jobs,
+    this._auth, {
+    FleetApiService? api,
+    UsersApiService? usersApi,
+  })  : _api = api ?? FleetApiService(),
+        _usersApi = usersApi ?? UsersApiService() {
     refresh();
   }
 
   final JobRepository _jobs;
   final AuthViewModel _auth;
   final FleetApiService _api;
+  final UsersApiService _usersApi;
 
   String tab = 'dashboard';
   bool profileComplete = false;
@@ -65,6 +74,31 @@ class FleetViewModel extends ChangeNotifier {
 
   List<FleetJobSummary> activeJobs = const [];
   List<FleetCompletedJob> completedJobs = const [];
+
+  FleetMeProfileUi? meProfile;
+  bool meProfileLoading = false;
+  String? meProfileError;
+
+  Future<void> loadMeProfile() async {
+    final token = _auth.session?.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      meProfileError = 'Not signed in';
+      notifyListeners();
+      return;
+    }
+    meProfileLoading = true;
+    meProfileError = null;
+    notifyListeners();
+    try {
+      final body = await _usersApi.fetchMe(accessToken: token);
+      meProfile = FleetMeProfileUi.fromApiBody(body);
+    } catch (e) {
+      meProfileError = e.toString();
+    } finally {
+      meProfileLoading = false;
+      notifyListeners();
+    }
+  }
 
   Future<void> refresh() async {
     final session = _auth.session;
@@ -228,6 +262,9 @@ class FleetViewModel extends ChangeNotifier {
   void setTab(String value) {
     tab = value;
     notifyListeners();
+    if (value == 'profile') {
+      loadMeProfile();
+    }
   }
 
   void openFleetEditProfile({required bool fromPostJobGate}) {
@@ -240,6 +277,7 @@ class FleetViewModel extends ChangeNotifier {
     tab = _returnTabAfterProfileEdit ?? 'profile';
     _returnTabAfterProfileEdit = null;
     notifyListeners();
+    if (tab == 'profile') loadMeProfile();
   }
 
   void markProfileComplete() {
@@ -247,6 +285,7 @@ class FleetViewModel extends ChangeNotifier {
     tab = _returnTabAfterProfileEdit ?? 'profile';
     _returnTabAfterProfileEdit = null;
     notifyListeners();
+    if (tab == 'profile') loadMeProfile();
   }
 
   /// Post Job gate: advance to the full job form (same tab). Profile details remain editable under Profile.
@@ -268,6 +307,7 @@ class FleetViewModel extends ChangeNotifier {
     selectedVehicle = null;
     tab = 'profile';
     notifyListeners();
+    loadMeProfile();
   }
 
   void requestServiceFromVehicle(Vehicle v) {
@@ -285,6 +325,7 @@ class FleetViewModel extends ChangeNotifier {
     showVehicles = false;
     tab = 'profile';
     notifyListeners();
+    loadMeProfile();
   }
 
   void openPayment() {
@@ -296,6 +337,7 @@ class FleetViewModel extends ChangeNotifier {
     showPaymentMethods = false;
     tab = 'profile';
     notifyListeners();
+    loadMeProfile();
   }
 
   void openHelp() {

@@ -137,13 +137,22 @@ class ApiAuthRepository implements AuthRepository {
     final data = _pickObject(body, ['data', 'result', 'payload', 'response']);
     final rootOrData = data.isNotEmpty ? data : body;
     final user = _pickObject(rootOrData, ['user', 'account', 'profile']);
+    final mechanicProfile = _pickObject(user, ['mechanicProfile', 'mechanic_profile']);
+    final fleetProfile = _pickObject(user, ['fleetProfile', 'fleet_profile']);
+    final companyProfile = _pickObject(user, ['companyProfile', 'company_profile']);
+    final employeeProfile = _pickObject(user, ['employeeProfile', 'employee_profile']);
 
     final accessToken = _pickString(
         rootOrData, ['accessToken', 'token', 'access_token', 'jwt']);
     final refreshToken = _pickString(rootOrData, ['refreshToken', 'refresh_token']) ??
         _pickString(body, ['refreshToken', 'refresh_token']);
-    final role =
-        _parseRole(rootOrData['role']) ?? _parseRole(user['role']) ?? roleHint;
+    final role = _parseRole(rootOrData['role']) ??
+        _parseRole(user['role']) ??
+        _parseRole(mechanicProfile['role']) ??
+        _parseRole(fleetProfile['role']) ??
+        _parseRole(companyProfile['role']) ??
+        _parseRole(employeeProfile['role']) ??
+        roleHint;
     final resolvedEmail = _pickString(rootOrData, ['email']) ??
         _pickString(user, ['email']) ??
         email;
@@ -178,6 +187,117 @@ class ApiAuthRepository implements AuthRepository {
       // Best-effort; still clear locally below.
     } finally {
       await clearSession();
+    }
+  }
+
+  @override
+  Future<void> registerFleetOperator({
+    required String companyName,
+    required String contactPerson,
+    required String email,
+    required String password,
+    required String confirmPassword,
+  }) async {
+    final uri = Uri.parse('$_baseUrl${ApiConstants.authRegisterPath}');
+    final res = await _client.post(
+      uri,
+      headers: const {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: jsonEncode({
+        'role': 'FLEET',
+        'companyName': companyName,
+        'contactPerson': contactPerson,
+        'email': email,
+        'password': password,
+        'confirmPassword': confirmPassword,
+      }),
+    );
+
+    Map<String, dynamic> body;
+    try {
+      final decoded = jsonDecode(res.body);
+      body = (decoded is Map<String, dynamic>) ? decoded : <String, dynamic>{};
+    } catch (_) {
+      body = <String, dynamic>{};
+    }
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      final msg = _pickString(body, ['message', 'error', 'msg']) ??
+          'Registration failed (HTTP ${res.statusCode}).';
+      throw AuthException(msg);
+    }
+  }
+
+  @override
+  Future<void> registerServiceProvider({
+    required String email,
+    required String password,
+    required String confirmPassword,
+    required String fullName,
+    required String phone,
+    required String businessType,
+    String? displayName,
+    String? businessName,
+    String? companyName,
+    String? baseLocationText,
+    String? basePostcode,
+    num? hourlyRate,
+    num? emergencyRate,
+    num? emergencySurcharge,
+    num? callOutFee,
+    String? rateCurrency,
+    num? coverageRadius,
+    String? profilePhotoUrl,
+    List<String>? skills,
+  }) async {
+    final uri = Uri.parse('$_baseUrl${ApiConstants.authRegisterPath}');
+
+    final payload = <String, dynamic>{
+      'role': 'MECHANIC',
+      'email': email,
+      'password': password,
+      'confirmPassword': confirmPassword,
+      'fullName': fullName,
+      'displayName': displayName,
+      'phone': phone,
+      'businessType': businessType,
+      'businessName': businessName,
+      'companyName': companyName,
+      'baseLocationText': baseLocationText,
+      'basePostcode': basePostcode,
+      'hourlyRate': hourlyRate,
+      'emergencyRate': emergencyRate,
+      'emergencySurcharge': emergencySurcharge,
+      'callOutFee': callOutFee,
+      'rateCurrency': rateCurrency,
+      'coverageRadius': coverageRadius,
+      'profilePhotoUrl': profilePhotoUrl,
+      'skills': skills,
+    }..removeWhere((_, v) => v == null);
+
+    final res = await _client.post(
+      uri,
+      headers: const {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: jsonEncode(payload),
+    );
+
+    Map<String, dynamic> body;
+    try {
+      final decoded = jsonDecode(res.body);
+      body = (decoded is Map<String, dynamic>) ? decoded : <String, dynamic>{};
+    } catch (_) {
+      body = <String, dynamic>{};
+    }
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      final msg = _pickString(body, ['message', 'error', 'msg']) ??
+          'Registration failed (HTTP ${res.statusCode}).';
+      throw AuthException(msg);
     }
   }
 }

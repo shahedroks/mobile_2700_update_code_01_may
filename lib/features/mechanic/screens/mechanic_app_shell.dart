@@ -15,6 +15,7 @@ import '../../../widgets/truckfix_map_preview.dart';
 import '../../auth/viewmodel/auth_viewmodel.dart';
 import '../../categories/job_taxonomy.dart';
 import '../viewmodel/mechanic_viewmodel.dart';
+import '../../../data/services/mechanic_api_service.dart';
 
 class MechanicAppShell extends StatelessWidget {
   const MechanicAppShell({super.key});
@@ -22,7 +23,11 @@ class MechanicAppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (ctx) => MechanicViewModel(ctx.read<JobRepository>()),
+      create: (ctx) => MechanicViewModel(
+        ctx.read<JobRepository>(),
+        ctx.read<AuthRepository>(),
+        MechanicApiService(),
+      ),
       child: const _MechScaffold(),
     );
   }
@@ -479,6 +484,15 @@ class _MechBottomNav extends StatelessWidget {
 class _JobFeedPage extends StatelessWidget {
   const _JobFeedPage();
 
+  Future<void> _toggleOnline(BuildContext context) async {
+    try {
+      await context.read<MechanicViewModel>().toggleOnline();
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<MechanicViewModel>();
@@ -518,7 +532,7 @@ class _JobFeedPage extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         InkWell(
-          onTap: vm.toggleOnline,
+          onTap: () => _toggleOnline(context),
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -554,7 +568,7 @@ class _JobFeedPage extends StatelessWidget {
                 ),
                 Switch(
                   value: vm.online,
-                  onChanged: (_) => vm.toggleOnline(),
+                  onChanged: (_) => _toggleOnline(context),
                   activeTrackColor: AppColors.green.withValues(alpha: 0.5),
                   activeThumbColor: Colors.white,
                 ),

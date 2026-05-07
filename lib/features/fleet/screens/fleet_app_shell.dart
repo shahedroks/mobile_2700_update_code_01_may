@@ -321,6 +321,7 @@ class _FleetBody extends StatelessWidget {
         return _FleetQuoteReceived(onDone: () => vm.setTab('tracking'));
       case 'profile':
         return _FleetProfile(
+          vm: vm,
           onEdit: () => vm.openFleetEditProfile(fromPostJobGate: false),
           onVehicles: vm.openVehicles,
           onPayment: vm.openPayment,
@@ -4444,6 +4445,7 @@ class _FleetQuoteReceived extends StatelessWidget {
 
 class _FleetProfile extends StatelessWidget {
   const _FleetProfile({
+    required this.vm,
     required this.onEdit,
     required this.onVehicles,
     required this.onPayment,
@@ -4451,6 +4453,7 @@ class _FleetProfile extends StatelessWidget {
     required this.onLogout,
   });
 
+  final FleetViewModel vm;
   final VoidCallback onEdit;
   final VoidCallback onVehicles;
   final VoidCallback onPayment;
@@ -4462,11 +4465,63 @@ class _FleetProfile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (vm.meProfileLoading && vm.meProfile == null) {
+      return const ColoredBox(
+        color: _profileBg,
+        child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+    if (vm.meProfileError != null && vm.meProfile == null) {
+      return ColoredBox(
+        color: _profileBg,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  vm.meProfileError!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: vm.loadMeProfile,
+                  style: FilledButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.black),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    final p = vm.meProfile;
+    if (p == null) {
+      return ColoredBox(
+        color: _profileBg,
+        child: Center(
+          child: Text(
+            'No profile data',
+            style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.9), fontSize: 13),
+          ),
+        ),
+      );
+    }
+
     return ColoredBox(
       color: _profileBg,
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
+          if (vm.meProfileLoading) ...[
+            const LinearProgressIndicator(
+              minHeight: 2,
+              backgroundColor: Color(0xFF1A1A1A),
+              color: AppColors.primary,
+            ),
+          ],
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
             child: Column(
@@ -4486,20 +4541,20 @@ class _FleetProfile extends StatelessWidget {
                     ],
                   ),
                   alignment: Alignment.center,
-                  child: const Text(
-                    'LT',
-                    style: TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.w900),
+                  child: Text(
+                    p.avatarInitials,
+                    style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.w900),
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Logistix Transport',
+                Text(
+                  p.headerTitle,
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.2, height: 1.2),
+                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.2, height: 1.2),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'john@logistix.co.za',
+                  p.email,
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.85), fontSize: 12),
                 ),
@@ -4514,31 +4569,31 @@ class _FleetProfile extends StatelessWidget {
               children: [
                 _profileSection(
                   'Company Details',
-                  const [
-                    ('Company Name', 'Logistix Transport (Pty) Ltd'),
-                    ('Reg Number', '2019/223456/07'),
-                    ('VAT Number', '4120889456'),
-                    ('Fleet Size', '21–50 vehicles'),
+                  [
+                    ('Company Name', p.companyName),
+                    ('Reg Number', p.regNumber),
+                    ('VAT Number', p.vatNumber),
+                    ('Fleet Size', p.fleetSize),
                   ],
                 ),
                 const SizedBox(height: 12),
                 _profileSection(
                   'Contact Person',
-                  const [
-                    ('Name', 'John Khumalo'),
-                    ('Role', 'Fleet Manager'),
-                    ('Phone', '+44 7712 345 678'),
-                    ('Email', 'john@logistix.co.za'),
+                  [
+                    ('Name', p.contactName),
+                    ('Role', p.contactRole),
+                    ('Phone', p.contactPhone),
+                    ('Email', p.email),
                   ],
                 ),
                 const SizedBox(height: 12),
                 _profileSection(
                   'Billing & Payment',
-                  const [
-                    ('Card Number', 'VISA •••• 4891'),
-                    ('Expiry', '09 / 28'),
+                  [
+                    ('Card Number', p.cardDisplay),
+                    ('Expiry', p.expiryDisplay),
                     ('CCV', '•••'),
-                    ('Billing Address', '123 Logistics Ave, JHB'),
+                    ('Billing Address', p.billingAddress),
                   ],
                 ),
                 const SizedBox(height: 16),

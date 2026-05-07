@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../data/repositories/app_repository.dart';
 import '../../../widgets/app_input.dart';
 import '../../../widgets/buttons.dart';
 
@@ -24,13 +26,22 @@ class _FleetRegisterBody extends StatefulWidget {
 }
 
 class _FleetRegisterBodyState extends State<_FleetRegisterBody> {
+  static const int _minPasswordLen = 8;
+
   bool _showPass = false;
   bool _showConfirm = false;
+  bool _submitting = false;
+  final _company = TextEditingController();
+  final _name = TextEditingController();
+  final _email = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
 
   @override
   void dispose() {
+    _company.dispose();
+    _name.dispose();
+    _email.dispose();
     _password.dispose();
     _confirm.dispose();
     super.dispose();
@@ -38,6 +49,58 @@ class _FleetRegisterBodyState extends State<_FleetRegisterBody> {
 
   bool get _passwordsMatch =>
       _password.text.isNotEmpty && _confirm.text.isNotEmpty && _password.text == _confirm.text;
+
+  bool get _passwordStrongEnough => _password.text.trim().length >= _minPasswordLen;
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+
+    final companyName = _company.text.trim();
+    final contactPerson = _name.text.trim();
+    final email = _email.text.trim();
+    final password = _password.text;
+    final confirmPassword = _confirm.text;
+
+    if (companyName.isEmpty || contactPerson.isEmpty || email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all required fields.')),
+      );
+      return;
+    }
+    if (password.trim().length < _minPasswordLen) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password must be at least 8 characters.')),
+      );
+      return;
+    }
+    if (password.isEmpty || confirmPassword.isEmpty || password != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passwords do not match.')),
+      );
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      final auth = context.read<AuthRepository>();
+      await auth.registerFleetOperator(
+        companyName: companyName,
+        contactPerson: contactPerson,
+        email: email,
+        password: password,
+        confirmPassword: confirmPassword,
+      );
+      if (!mounted) return;
+      widget.onNavigate('terms');
+    } on Exception catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -83,11 +146,27 @@ class _FleetRegisterBodyState extends State<_FleetRegisterBody> {
               child: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
-                  AppInput(label: 'Company Name', placeholder: 'Logistix Transport (Pty) Ltd', prefixIcon: const Icon(Icons.business, size: 16, color: AppColors.textGray)),
+                  AppInput(
+                    label: 'Company Name',
+                    placeholder: 'Logistix Transport (Pty) Ltd',
+                    controller: _company,
+                    prefixIcon: const Icon(Icons.business, size: 16, color: AppColors.textGray),
+                  ),
                   const SizedBox(height: 16),
-                  AppInput(label: 'Full Name', placeholder: 'John Khumalo', prefixIcon: const Icon(Icons.person_outline, size: 16, color: AppColors.textGray)),
+                  AppInput(
+                    label: 'Full Name',
+                    placeholder: 'John Khumalo',
+                    controller: _name,
+                    prefixIcon: const Icon(Icons.person_outline, size: 16, color: AppColors.textGray),
+                  ),
                   const SizedBox(height: 16),
-                  AppInput(label: 'Email Address', placeholder: 'john@logistix.co.za', keyboardType: TextInputType.emailAddress, prefixIcon: const Icon(Icons.email_outlined, size: 16, color: AppColors.textGray)),
+                  AppInput(
+                    label: 'Email Address',
+                    placeholder: 'john@logistix.co.za',
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                    prefixIcon: const Icon(Icons.email_outlined, size: 16, color: AppColors.textGray),
+                  ),
                   const SizedBox(height: 16),
                   AppInput(
                     label: 'Password',
@@ -117,11 +196,25 @@ class _FleetRegisterBodyState extends State<_FleetRegisterBody> {
                       padding: const EdgeInsets.only(top: 8),
                       child: Row(
                         children: [
-                          Icon(_passwordsMatch ? Icons.check : Icons.close, size: 12, color: _passwordsMatch ? AppColors.success : AppColors.error),
+                          Icon(
+                            (_passwordsMatch && _passwordStrongEnough) ? Icons.check : Icons.close,
+                            size: 12,
+                            color: (_passwordsMatch && _passwordStrongEnough) ? AppColors.success : AppColors.error,
+                          ),
                           const SizedBox(width: 4),
                           Text(
-                            _passwordsMatch ? 'Passwords match' : "Passwords don't match",
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: _passwordsMatch ? AppColors.success : AppColors.error),
+                            !_passwordStrongEnough
+                                ? 'Minimum 8 characters required'
+                                : _passwordsMatch
+                                    ? 'Passwords match'
+                                    : "Passwords don't match",
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: (_passwordsMatch && _passwordStrongEnough)
+                                  ? AppColors.success
+                                  : AppColors.error,
+                            ),
                           ),
                         ],
                       ),
@@ -134,7 +227,10 @@ class _FleetRegisterBodyState extends State<_FleetRegisterBody> {
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
               child: Column(
                 children: [
-                  PrimaryButton(label: 'Create Account →', onPressed: () => widget.onNavigate('terms')),
+                  PrimaryButton(
+                    label: _submitting ? 'Creating…' : 'Create Account →',
+                    onPressed: _submitting ? null : _submit,
+                  ),
                   const SizedBox(height: 12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,

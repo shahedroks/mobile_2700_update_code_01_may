@@ -21,6 +21,38 @@ abstract class AuthRepository {
 
   /// Optional backend logout (best-effort).
   Future<void> logout({required String refreshToken});
+
+  /// Fleet operator registration.
+  Future<void> registerFleetOperator({
+    required String companyName,
+    required String contactPerson,
+    required String email,
+    required String password,
+    required String confirmPassword,
+  });
+
+  /// Service Provider (mechanic) registration.
+  Future<void> registerServiceProvider({
+    required String email,
+    required String password,
+    required String confirmPassword,
+    required String fullName,
+    required String phone,
+    required String businessType, // e.g. SOLE_TRADER | COMPANY
+    String? displayName,
+    String? businessName,
+    String? companyName,
+    String? baseLocationText,
+    String? basePostcode,
+    num? hourlyRate,
+    num? emergencyRate,
+    num? emergencySurcharge,
+    num? callOutFee,
+    String? rateCurrency,
+    num? coverageRadius,
+    String? profilePhotoUrl,
+    List<String>? skills,
+  });
 }
 
 class MemoryAuthRepository implements AuthRepository {
@@ -54,6 +86,42 @@ class MemoryAuthRepository implements AuthRepository {
   @override
   Future<void> logout({required String refreshToken}) async {
     await clearSession();
+  }
+
+  @override
+  Future<void> registerFleetOperator({
+    required String companyName,
+    required String contactPerson,
+    required String email,
+    required String password,
+    required String confirmPassword,
+  }) async {
+    // No-op for prototype mode.
+  }
+
+  @override
+  Future<void> registerServiceProvider({
+    required String email,
+    required String password,
+    required String confirmPassword,
+    required String fullName,
+    required String phone,
+    required String businessType,
+    String? displayName,
+    String? businessName,
+    String? companyName,
+    String? baseLocationText,
+    String? basePostcode,
+    num? hourlyRate,
+    num? emergencyRate,
+    num? emergencySurcharge,
+    num? callOutFee,
+    String? rateCurrency,
+    num? coverageRadius,
+    String? profilePhotoUrl,
+    List<String>? skills,
+  }) async {
+    // No-op for prototype mode.
   }
 }
 

@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
-import '../../../data/models/session.dart';
+import '../../../data/repositories/app_repository.dart';
 import '../../../widgets/app_input.dart';
 import '../../../widgets/buttons.dart';
-import '../viewmodel/auth_viewmodel.dart';
 
 class MechanicRegisterScreen extends StatelessWidget {
   const MechanicRegisterScreen({super.key, required this.onNavigate});
@@ -28,15 +27,35 @@ class _MechanicRegisterBody extends StatefulWidget {
 }
 
 class _MechanicRegisterBodyState extends State<_MechanicRegisterBody> {
+  static const int _minPasswordLen = 8;
+
   bool _showPass = false;
   bool _showConfirm = false;
   double _radius = 30;
+  bool _submitting = false;
+
+  final _fullName = TextEditingController();
+  final _companyName = TextEditingController();
+  final _email = TextEditingController();
+  final _phone = TextEditingController();
+  final _callOutFee = TextEditingController();
+  final _hourlyRate = TextEditingController();
+  final _emergencySurcharge = TextEditingController();
+  final _basePostcode = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
   String _businessType = 'sole_trader'; // sole_trader | company
 
   @override
   void dispose() {
+    _fullName.dispose();
+    _companyName.dispose();
+    _email.dispose();
+    _phone.dispose();
+    _callOutFee.dispose();
+    _hourlyRate.dispose();
+    _emergencySurcharge.dispose();
+    _basePostcode.dispose();
     _password.dispose();
     _confirm.dispose();
     super.dispose();
@@ -45,17 +64,80 @@ class _MechanicRegisterBodyState extends State<_MechanicRegisterBody> {
   bool get _passwordsMatch =>
       _password.text.isNotEmpty && _confirm.text.isNotEmpty && _password.text == _confirm.text;
 
+  bool get _passwordStrongEnough => _password.text.trim().length >= _minPasswordLen;
+
+  num? _tryNum(String raw) {
+    final v = raw.trim();
+    if (v.isEmpty) return null;
+    return num.tryParse(v);
+  }
+
   Future<void> _onCreateAccountPressed() async {
-    if (_businessType == 'company') {
-      await context.read<AuthViewModel>().completeRegistration(
-        UserRole.company,
-        email: 'admin@swiftmechanics.co.uk',
+    if (_submitting) return;
+
+    final fullName = _fullName.text.trim();
+    final email = _email.text.trim();
+    final phone = _phone.text.trim();
+    final password = _password.text;
+    final confirmPassword = _confirm.text;
+    final companyName = _companyName.text.trim();
+    final basePostcode = _basePostcode.text.trim();
+
+    if (fullName.isEmpty || email.isEmpty || phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all required fields.')),
       );
-      if (!mounted) return;
-      widget.onNavigate('company-dashboard');
       return;
     }
-    widget.onNavigate('mechanic-terms');
+    if (password.trim().length < _minPasswordLen) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password must be at least 8 characters.')),
+      );
+      return;
+    }
+    if (password.isEmpty || confirmPassword.isEmpty || password != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passwords do not match.')),
+      );
+      return;
+    }
+
+    final businessType = _businessType == 'company' ? 'COMPANY' : 'SOLE_TRADER';
+    final displayName = companyName.isNotEmpty ? companyName : fullName.split(' ').first;
+
+    setState(() => _submitting = true);
+    try {
+      final auth = context.read<AuthRepository>();
+      await auth.registerServiceProvider(
+        email: email,
+        password: password,
+        confirmPassword: confirmPassword,
+        fullName: fullName,
+        displayName: displayName,
+        phone: phone,
+        businessType: businessType,
+        businessName: companyName.isNotEmpty ? companyName : null,
+        companyName: companyName.isNotEmpty ? companyName : null,
+        basePostcode: basePostcode.isNotEmpty ? basePostcode : null,
+        baseLocationText: basePostcode.isNotEmpty ? basePostcode : null,
+        callOutFee: _tryNum(_callOutFee.text),
+        hourlyRate: _tryNum(_hourlyRate.text),
+        emergencySurcharge: _tryNum(_emergencySurcharge.text),
+        emergencyRate: _tryNum(_emergencySurcharge.text),
+        rateCurrency: 'ZAR',
+        coverageRadius: _radius.toInt(),
+        skills: const [],
+      );
+      if (!mounted) return;
+      widget.onNavigate('mechanic-terms');
+    } on Exception catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   String get _radiusLabel {
@@ -214,25 +296,70 @@ class _MechanicRegisterBodyState extends State<_MechanicRegisterBody> {
                   const SizedBox(height: 24),
                   const Text('PERSONAL INFO', style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2)),
                   const SizedBox(height: 12),
-                  AppInput(label: 'Full Name', placeholder: 'Themba Dlamini', prefixIcon: const Icon(Icons.person_outline, size: 16, color: AppColors.textGray)),
+                  AppInput(
+                    label: 'Full Name',
+                    placeholder: 'Themba Dlamini',
+                    controller: _fullName,
+                    prefixIcon: const Icon(Icons.person_outline, size: 16, color: AppColors.textGray),
+                  ),
                   const SizedBox(height: 16),
-                  AppInput(label: 'Company Name (optional)', placeholder: 'e.g. TechMech Workshop', prefixIcon: const Icon(Icons.business, size: 16, color: AppColors.textGray)),
+                  AppInput(
+                    label: 'Company Name (optional)',
+                    placeholder: 'e.g. TechMech Workshop',
+                    controller: _companyName,
+                    prefixIcon: const Icon(Icons.business, size: 16, color: AppColors.textGray),
+                  ),
                   const SizedBox(height: 16),
-                  AppInput(label: 'Email Address', placeholder: 'themba@fix.co.za', keyboardType: TextInputType.emailAddress, prefixIcon: const Icon(Icons.email_outlined, size: 16, color: AppColors.textGray)),
+                  AppInput(
+                    label: 'Email Address',
+                    placeholder: 'themba@fix.co.za',
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                    prefixIcon: const Icon(Icons.email_outlined, size: 16, color: AppColors.textGray),
+                  ),
                   const SizedBox(height: 16),
-                  AppInput(label: 'Phone Number', placeholder: '+27 82 000 0000', keyboardType: TextInputType.phone, prefixIcon: const Icon(Icons.phone_outlined, size: 16, color: AppColors.textGray)),
+                  AppInput(
+                    label: 'Phone Number',
+                    placeholder: '+27 82 000 0000',
+                    controller: _phone,
+                    keyboardType: TextInputType.phone,
+                    prefixIcon: const Icon(Icons.phone_outlined, size: 16, color: AppColors.textGray),
+                  ),
                   const SizedBox(height: 24),
                   const Text('RATES (ZAR)', style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2)),
                   const SizedBox(height: 12),
-                  AppInput(label: 'Call-out Charge', placeholder: '350', keyboardType: TextInputType.number, prefixIcon: const Icon(Icons.attach_money, size: 16, color: AppColors.textGray)),
+                  AppInput(
+                    label: 'Call-out Charge',
+                    placeholder: '350',
+                    controller: _callOutFee,
+                    keyboardType: TextInputType.number,
+                    prefixIcon: const Icon(Icons.attach_money, size: 16, color: AppColors.textGray),
+                  ),
                   const SizedBox(height: 16),
-                  AppInput(label: 'Hourly Rate', placeholder: '850', keyboardType: TextInputType.number, prefixIcon: const Icon(Icons.attach_money, size: 16, color: AppColors.textGray)),
+                  AppInput(
+                    label: 'Hourly Rate',
+                    placeholder: '850',
+                    controller: _hourlyRate,
+                    keyboardType: TextInputType.number,
+                    prefixIcon: const Icon(Icons.attach_money, size: 16, color: AppColors.textGray),
+                  ),
                   const SizedBox(height: 16),
-                  AppInput(label: 'Emergency Surcharge', placeholder: '500', keyboardType: TextInputType.number, prefixIcon: const Icon(Icons.flash_on, size: 16, color: AppColors.error)),
+                  AppInput(
+                    label: 'Emergency Surcharge',
+                    placeholder: '500',
+                    controller: _emergencySurcharge,
+                    keyboardType: TextInputType.number,
+                    prefixIcon: const Icon(Icons.flash_on, size: 16, color: AppColors.error),
+                  ),
                   const SizedBox(height: 24),
                   const Text('SERVICE AREA', style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2)),
                   const SizedBox(height: 12),
-                  AppInput(label: 'Base Postcode', placeholder: 'e.g. 1685', prefixIcon: const Icon(Icons.location_on_outlined, size: 16, color: AppColors.textGray)),
+                  AppInput(
+                    label: 'Base Postcode',
+                    placeholder: 'e.g. 1685',
+                    controller: _basePostcode,
+                    prefixIcon: const Icon(Icons.location_on_outlined, size: 16, color: AppColors.textGray),
+                  ),
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -268,9 +395,26 @@ class _MechanicRegisterBodyState extends State<_MechanicRegisterBody> {
                       padding: const EdgeInsets.only(top: 8),
                       child: Row(
                         children: [
-                          Icon(_passwordsMatch ? Icons.check : Icons.close, size: 12, color: _passwordsMatch ? AppColors.success : AppColors.error),
+                          Icon(
+                            (_passwordsMatch && _passwordStrongEnough) ? Icons.check : Icons.close,
+                            size: 12,
+                            color: (_passwordsMatch && _passwordStrongEnough) ? AppColors.success : AppColors.error,
+                          ),
                           const SizedBox(width: 4),
-                          Text(_passwordsMatch ? 'Passwords match' : "Passwords don't match", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: _passwordsMatch ? AppColors.success : AppColors.error)),
+                          Text(
+                            !_passwordStrongEnough
+                                ? 'Minimum 8 characters required'
+                                : _passwordsMatch
+                                    ? 'Passwords match'
+                                    : "Passwords don't match",
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: (_passwordsMatch && _passwordStrongEnough)
+                                  ? AppColors.success
+                                  : AppColors.error,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -282,7 +426,10 @@ class _MechanicRegisterBodyState extends State<_MechanicRegisterBody> {
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
               child: Column(
                 children: [
-                  PrimaryButton(label: 'Create Account →', onPressed: _onCreateAccountPressed),
+                  PrimaryButton(
+                    label: _submitting ? 'Creating…' : 'Create Account →',
+                    onPressed: _submitting ? null : _onCreateAccountPressed,
+                  ),
                   const SizedBox(height: 12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,

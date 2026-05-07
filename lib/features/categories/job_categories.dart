@@ -37,6 +37,28 @@ abstract final class JobCategories {
     ('🔒', 'Locked Out of Vehicle'),
     ('📋', 'Other (Describe in Notes)'),
   ];
+
+  /// `POST /jobs` `issueType` — backend expects SCREAMING_SNAKE enums (see job create response), not UI labels.
+  static const Map<String, String> _apiIssueTypeByLabel = {
+    'Flat / Damaged Tyre': 'FLAT_DAMAGED_TYRE',
+    'Battery Failure / Jump Start': 'BATTERY_FAILURE_JUMP_START',
+    "Engine Won't Start": 'ENGINE_WONT_START',
+    'Breakdown (Unknown Issue)': 'BREAKDOWN_UNKNOWN',
+    'Overheating': 'OVERHEATING',
+    'Brake Problem': 'BRAKE_PROBLEM',
+    'Electrical Issue': 'ELECTRICAL_ISSUE',
+    'Fuel Issue (Wrong Fuel / Empty)': 'FUEL_ISSUE',
+    'Vehicle Recovery / Towing': 'VEHICLE_RECOVERY',
+    'Diagnostic Check': 'DIAGNOSTIC_CHECK',
+    'Locked Out of Vehicle': 'LOCKED_OUT',
+    'Other (Describe in Notes)': 'OTHER',
+  };
+
+  static String apiIssueTypeForLabel(String label) {
+    final key = label.trim();
+    if (key.isEmpty) return 'OTHER';
+    return _apiIssueTypeByLabel[key] ?? 'OTHER';
+  }
 }
 
 abstract final class JobFeedMock {
