@@ -12,6 +12,7 @@ import '../../../data/repositories/app_repository.dart';
 import '../../../routes/app_routes.dart';
 import '../../auth/viewmodel/auth_viewmodel.dart';
 import '../viewmodel/fleet_viewmodel.dart';
+import '../widgets/fleet_track_job_detail_view.dart';
 import 'notifications_screen.dart';
 import 'post_job_screen.dart';
 
@@ -314,9 +315,9 @@ class _FleetBody extends StatelessWidget {
           onContinueToJobForm: vm.unlockPostJobFormFromGate,
         );
       case 'tracking':
-        return _FleetTrackingList(onOpenDetail: () => vm.setTab('tracking-detail'));
+        return _FleetTrackingList(onOpenDetail: vm.openTrackingJobDetail);
       case 'tracking-detail':
-        return _FleetTrackingDetail(onBack: () => vm.setTab('tracking'));
+        return FleetTrackJobDetailView(onBack: vm.closeTrackingJobDetail);
       case 'quote-received':
         return _FleetQuoteReceived(onDone: () => vm.setTab('tracking'));
       case 'profile':
@@ -2595,39 +2596,9 @@ class _FleetInvoiceAction extends StatelessWidget {
   }
 }
 
-enum _FleetTrackStatus { posted, assigned, enRoute, onSite }
-
-class _FleetTrackingJob {
-  const _FleetTrackingJob({
-    required this.id,
-    required this.truck,
-    required this.issue,
-    required this.status,
-    required this.mechanic,
-    required this.eta,
-    required this.pay,
-    required this.ago,
-    required this.emergency,
-    this.quoteAgreed = false,
-    this.scheduledFor,
-  });
-
-  final String id;
-  final String truck;
-  final String issue;
-  final _FleetTrackStatus status;
-  final String? mechanic;
-  final String? eta;
-  final String pay;
-  final String ago;
-  final bool emergency;
-  final bool quoteAgreed;
-  final DateTime? scheduledFor;
-}
-
-({Color bar, Color fg, Color badgeBg, Color badgeBorder, String shortLabel, bool pulse}) _fleetTrackCfg(_FleetTrackStatus s) {
+({Color bar, Color fg, Color badgeBg, Color badgeBorder, String shortLabel, bool pulse}) _fleetTrackCfg(FleetTrackStatus s) {
   return switch (s) {
-    _FleetTrackStatus.posted => (
+    FleetTrackStatus.posted => (
         bar: AppColors.red,
         fg: AppColors.red,
         badgeBg: AppColors.red.withValues(alpha: 0.10),
@@ -2635,7 +2606,7 @@ class _FleetTrackingJob {
         shortLabel: 'POSTED',
         pulse: true,
       ),
-    _FleetTrackStatus.assigned => (
+    FleetTrackStatus.assigned => (
         bar: const Color(0xFF60A5FA),
         fg: const Color(0xFF60A5FA),
         badgeBg: const Color(0xFF60A5FA).withValues(alpha: 0.10),
@@ -2643,7 +2614,7 @@ class _FleetTrackingJob {
         shortLabel: 'ASSIGNED',
         pulse: false,
       ),
-    _FleetTrackStatus.enRoute => (
+    FleetTrackStatus.enRoute => (
         bar: AppColors.orange,
         fg: AppColors.orange,
         badgeBg: AppColors.orange.withValues(alpha: 0.10),
@@ -2651,7 +2622,7 @@ class _FleetTrackingJob {
         shortLabel: 'EN ROUTE',
         pulse: true,
       ),
-    _FleetTrackStatus.onSite => (
+    FleetTrackStatus.onSite => (
         bar: AppColors.green,
         fg: AppColors.green,
         badgeBg: AppColors.green.withValues(alpha: 0.10),
@@ -2659,93 +2630,46 @@ class _FleetTrackingJob {
         shortLabel: 'ON SITE',
         pulse: true,
       ),
+    FleetTrackStatus.other => (
+        bar: const Color(0xFF6B7280),
+        fg: const Color(0xFF9CA3AF),
+        badgeBg: const Color(0xFF6B7280).withValues(alpha: 0.10),
+        badgeBorder: const Color(0xFF6B7280).withValues(alpha: 0.25),
+        shortLabel: 'UPDATE',
+        pulse: false,
+      ),
   };
 }
 
-bool _fleetTrackingHasFee(_FleetTrackingJob job) {
-  if (job.status == _FleetTrackStatus.enRoute || job.status == _FleetTrackStatus.onSite) return true;
-  if (job.emergency) return false;
-  if (job.scheduledFor != null) {
-    final hours = job.scheduledFor!.difference(DateTime.now()).inMinutes / 60.0;
-    return hours < 24;
-  }
-  return false;
-}
+bool _fleetTrackingHasFee(FleetTrackingJobUi job) => job.cancellationCanCancel && !job.cancellationIsFree && job.cancellationFee > 0;
 
-String _fleetCancelFeeAmount(_FleetTrackingJob job) {
-  final n = double.tryParse(job.pay.replaceAll('£', '').trim()) ?? 0;
-  return '£${(n * 0.1).round()}';
+String _fleetCancelFeeAmount(FleetTrackingJobUi job) {
+  final sym = switch (job.currency.toUpperCase()) {
+    'GBP' => '£',
+    'USD' => r'$',
+    'EUR' => '€',
+    _ => '',
+  };
+  return '$sym${job.cancellationFee.round()}';
 }
 
 class _FleetTrackingList extends StatefulWidget {
   const _FleetTrackingList({required this.onOpenDetail});
 
-  final VoidCallback onOpenDetail;
+  final Future<void> Function(String backendJobId) onOpenDetail;
 
   @override
   State<_FleetTrackingList> createState() => _FleetTrackingListState();
 }
 
 class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTickerProviderStateMixin {
-  late final List<_FleetTrackingJob> _jobs;
-  _FleetTrackingJob? _cancelJob;
+  FleetTrackingJobUi? _cancelJob;
   late final AnimationController _pulse;
 
   @override
   void initState() {
     super.initState();
     _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat(reverse: true);
-    final now = DateTime.now();
-    _jobs = [
-      const _FleetTrackingJob(
-        id: 'TF-8821',
-        truck: 'Tautliner · CA 456-789',
-        issue: 'Engine overheating — M1 near Birmingham',
-        status: _FleetTrackStatus.posted,
-        mechanic: null,
-        eta: null,
-        pay: '£165',
-        ago: '4 min ago',
-        emergency: true,
-        quoteAgreed: false,
-      ),
-      _FleetTrackingJob(
-        id: 'TF-8819',
-        truck: 'Rigid Truck · GP 112-033',
-        issue: 'Left rear tyre blowout — M6 services',
-        status: _FleetTrackStatus.assigned,
-        mechanic: 'Tom S.',
-        eta: null,
-        pay: '£95',
-        ago: '18 min ago',
-        emergency: false,
-        scheduledFor: now.add(const Duration(hours: 30)),
-      ),
-      _FleetTrackingJob(
-        id: 'TF-8822',
-        truck: 'Tanker · KZN 78-99',
-        issue: 'Air brake fault — A1 Leeds',
-        status: _FleetTrackStatus.enRoute,
-        mechanic: 'James M.',
-        eta: '12 min',
-        pay: '£310',
-        ago: '35 min ago',
-        emergency: false,
-        scheduledFor: now.add(const Duration(hours: 6)),
-      ),
-      const _FleetTrackingJob(
-        id: 'TF-8814',
-        truck: 'Semi · WC 234-567',
-        issue: 'Fuel leak suspected — M25 London',
-        status: _FleetTrackStatus.onSite,
-        mechanic: 'Paul K.',
-        eta: null,
-        pay: '£185',
-        ago: '1 hr ago',
-        emergency: true,
-        quoteAgreed: true,
-      ),
-    ];
   }
 
   @override
@@ -2754,10 +2678,10 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
     super.dispose();
   }
 
-  bool _canCancel(_FleetTrackStatus s) => s != _FleetTrackStatus.onSite;
+  bool _canCancel(FleetTrackStatus s) => s != FleetTrackStatus.onSite;
 
-  String _cancelButtonLabel(_FleetTrackingJob job) {
-    if (job.status == _FleetTrackStatus.enRoute) return 'Cancel';
+  String _cancelButtonLabel(FleetTrackingJobUi job) {
+    if (!job.cancellationCanCancel) return 'Cancel';
     if (_fleetTrackingHasFee(job)) return 'Cancel · ${_fleetCancelFeeAmount(job)}';
     return 'Cancel - Free';
   }
@@ -2771,11 +2695,11 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
     String bodyText() {
       if (fee) {
         if (job.emergency) {
-          return 'The mechanic is on the way. A 10% cancellation fee ($feeStr) applies for emergency jobs once the mechanic is en route.';
+          return 'The mechanic is on the way. A cancellation fee ($feeStr) applies for emergency jobs once the mechanic is en route.';
         }
-        return 'Your booking is less than 24 hours away. A 10% late-cancellation fee ($feeStr) applies.';
+        return 'Your booking is less than 24 hours away. A late-cancellation fee ($feeStr) applies.';
       }
-      if (job.status == _FleetTrackStatus.posted) {
+      if (job.status == FleetTrackStatus.posted) {
         return 'No mechanic assigned yet — free cancellation.';
       }
       return 'Mechanic has not started journey — free cancellation.';
@@ -2847,7 +2771,7 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                '10% cancellation fee · $feeStr · Non-refundable',
+                                'Cancellation fee · $feeStr · Non-refundable',
                                 style: TextStyle(color: AppColors.red.withValues(alpha: 0.95), fontSize: 11, fontWeight: FontWeight.w600),
                               ),
                             ),
@@ -2892,6 +2816,8 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
 
   @override
   Widget build(BuildContext context) {
+    final vm = context.watch<FleetViewModel>();
+    final jobs = vm.trackingJobs;
     return Stack(
       children: [
         Column(
@@ -2909,7 +2835,7 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
                   const Text('Job Tracking', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -0.3)),
                   const SizedBox(height: 4),
                   Text(
-                    '${_jobs.length} active jobs',
+                    '${jobs.length} active jobs',
                     style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 11),
                   ),
                 ],
@@ -2918,10 +2844,10 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                itemCount: _jobs.length,
+                itemCount: jobs.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
-                  final job = _jobs[index];
+                  final job = jobs[index];
                   final cfg = _fleetTrackCfg(job.status);
                   final fee = _fleetTrackingHasFee(job);
                   final canCancel = _canCancel(job.status);
@@ -3106,7 +3032,7 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
                                       children: [
                                         Expanded(
                                           child: OutlinedButton(
-                                            onPressed: widget.onOpenDetail,
+                                            onPressed: job.canTrack ? () => widget.onOpenDetail(job.backendId) : null,
                                             style: OutlinedButton.styleFrom(
                                               foregroundColor: AppColors.textSecondary,
                                               backgroundColor: AppColors.card2,
@@ -3128,7 +3054,7 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
                                         Expanded(
                                           child: canCancel
                                               ? OutlinedButton(
-                                                  onPressed: () => setState(() => _cancelJob = job),
+                                                  onPressed: (job.cancellationCanCancel) ? () => setState(() => _cancelJob = job) : null,
                                                   style: OutlinedButton.styleFrom(
                                                     foregroundColor: fee ? AppColors.red : AppColors.textMuted,
                                                     side: BorderSide(
@@ -3194,1201 +3120,6 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
         ),
         _cancelModal(),
       ],
-    );
-  }
-}
-
-class _FleetDetailTimelineStep {
-  const _FleetDetailTimelineStep({required this.flowKey, required this.label, required this.time});
-
-  final String flowKey;
-  final String label;
-  final String time;
-}
-
-const List<_FleetDetailTimelineStep> _kFleetDetailTimeline = [
-  _FleetDetailTimelineStep(flowKey: 'posted', label: 'Posted', time: '14:32'),
-  _FleetDetailTimelineStep(flowKey: 'assigned', label: 'Assigned', time: '14:38'),
-  _FleetDetailTimelineStep(flowKey: 'en_route', label: 'En Route', time: '14:41'),
-  _FleetDetailTimelineStep(flowKey: 'arrived', label: 'Arrived', time: 'ETA 14:58'),
-  _FleetDetailTimelineStep(flowKey: 'in_progress', label: 'In Progress', time: '—'),
-  _FleetDetailTimelineStep(flowKey: 'completed', label: 'Completed', time: '—'),
-];
-
-const List<String> _kFleetDetailFlowOrder = ['posted', 'assigned', 'en_route', 'arrived', 'in_progress', 'completed'];
-
-({Color dot, Color fg, Color bg, Color border, String shortLabel}) _fleetDetailHeaderBadge(int stepIdx) {
-  return switch (stepIdx) {
-    0 => (
-        dot: AppColors.red,
-        fg: AppColors.red,
-        bg: AppColors.red.withValues(alpha: 0.10),
-        border: AppColors.red.withValues(alpha: 0.30),
-        shortLabel: 'POSTED',
-      ),
-    1 => (
-        dot: const Color(0xFF60A5FA),
-        fg: const Color(0xFF60A5FA),
-        bg: const Color(0xFF60A5FA).withValues(alpha: 0.10),
-        border: const Color(0xFF60A5FA).withValues(alpha: 0.30),
-        shortLabel: 'ASSIGNED',
-      ),
-    2 => (
-        dot: AppColors.orange,
-        fg: AppColors.orange,
-        bg: AppColors.orange.withValues(alpha: 0.10),
-        border: AppColors.orange.withValues(alpha: 0.30),
-        shortLabel: 'EN ROUTE',
-      ),
-    3 => (
-        dot: AppColors.primary,
-        fg: AppColors.primary,
-        bg: AppColors.primary.withValues(alpha: 0.10),
-        border: AppColors.primary.withValues(alpha: 0.30),
-        shortLabel: 'ARRIVED',
-      ),
-    4 => (
-        dot: AppColors.orange,
-        fg: AppColors.orange,
-        bg: AppColors.orange.withValues(alpha: 0.10),
-        border: AppColors.orange.withValues(alpha: 0.30),
-        shortLabel: 'IN PROGRESS',
-      ),
-    _ => (
-        dot: AppColors.green,
-        fg: AppColors.green,
-        bg: AppColors.green.withValues(alpha: 0.10),
-        border: AppColors.green.withValues(alpha: 0.30),
-        shortLabel: 'COMPLETED',
-      ),
-  };
-}
-
-class _FleetTrackingDetail extends StatefulWidget {
-  const _FleetTrackingDetail({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  State<_FleetTrackingDetail> createState() => _FleetTrackingDetailState();
-}
-
-class _FleetTrackingDetailState extends State<_FleetTrackingDetail> with SingleTickerProviderStateMixin {
-  int _jobStep = 2;
-  String _paymentStatus = 'authorised';
-  bool _cancelOpen = false;
-  bool _contactOpen = false;
-  bool _ratingOpen = false;
-  int _ratingValue = 0;
-  final _ratingComment = TextEditingController();
-  bool _ratingSubmitted = false;
-  late final AnimationController _headerPulse;
-
-  static const _detailFee = '£31';
-
-  @override
-  void initState() {
-    super.initState();
-    _headerPulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _headerPulse.dispose();
-    _ratingComment.dispose();
-    super.dispose();
-  }
-
-  bool get _mechanicAssigned => _jobStep >= 1;
-  bool get _mechanicStartedJourney => _jobStep >= 2;
-  bool get _detailHasFee => _jobStep >= 2 && _jobStep <= 4;
-
-  int _flowIndex(String key) => _kFleetDetailFlowOrder.indexOf(key);
-
-  Widget _sectionTitle(String t) {
-    return Text(
-      t,
-      style: const TextStyle(
-        color: AppColors.primary,
-        fontSize: 11,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 1.6,
-      ),
-    );
-  }
-
-  Widget _cancelSheet() {
-    return _FleetDetailBottomOverlay(
-      onBarrierTap: () => setState(() => _cancelOpen = false),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: const Color(0xFF111111),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.border2),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.red.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.warning_amber_rounded, color: AppColors.red, size: 22),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Cancel this job?', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 8),
-                      Text(
-                        _detailHasFee
-                            ? 'The mechanic is on the way. A 10% cancellation fee ($_detailFee) applies for emergency jobs once the mechanic is en route.'
-                            : _jobStep == 0
-                                ? 'No mechanic assigned yet — free cancellation.'
-                                : 'Mechanic has not started journey — free cancellation.',
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            if (_detailHasFee) ...[
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppColors.red.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.red.withValues(alpha: 0.20)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline_rounded, color: AppColors.red.withValues(alpha: 0.9), size: 18),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        '10% cancellation fee · $_detailFee · Non-refundable',
-                        style: TextStyle(color: AppColors.red.withValues(alpha: 0.95), fontSize: 11, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => setState(() => _cancelOpen = false),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.red,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: Text(
-                _detailHasFee ? 'Confirm Cancellation ($_detailFee fee)' : 'Confirm Cancellation — Free',
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton(
-              onPressed: () => setState(() => _cancelOpen = false),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.textSecondary,
-                side: const BorderSide(color: AppColors.border2),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text('Keep Job Active', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _contactSheet() {
-    return _FleetDetailBottomOverlay(
-      onBarrierTap: () => setState(() => _contactOpen = false),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: const Color(0xFF111111),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.border2),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: CachedNetworkImage(imageUrl: AppAssets.mechanicPortrait, width: 40, height: 40, fit: BoxFit.cover),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('James Mitchell', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
-                      SizedBox(height: 2),
-                      Text('+44 7734 567 890', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => setState(() => _contactOpen = false),
-                  icon: Icon(Icons.close_rounded, color: AppColors.textMuted.withValues(alpha: 0.8)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Call not wired in prototype')));
-                setState(() => _contactOpen = false);
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.call_rounded, size: 18),
-                  SizedBox(width: 8),
-                  Text('Call Mechanic', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton(
-              onPressed: () => setState(() => _contactOpen = false),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: AppColors.border2),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.chat_bubble_outline_rounded, size: 18, color: AppColors.textMuted),
-                  SizedBox(width: 8),
-                  Text('Send Message', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _ratingSheet() {
-    return _FleetDetailBottomOverlay(
-      onBarrierTap: _ratingSubmitted ? null : () => setState(() => _ratingOpen = false),
-      align: Alignment.bottomCenter,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        decoration: const BoxDecoration(
-          color: Color(0xFF0E0E0E),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-          border: Border(top: BorderSide(color: AppColors.border2)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: _ratingSubmitted
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(color: AppColors.border2, borderRadius: BorderRadius.circular(10)),
-                    ),
-                    const SizedBox(height: 24),
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: AppColors.card,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.green, width: 2),
-                      ),
-                      child: const Icon(Icons.check_circle_rounded, color: AppColors.green, size: 34),
-                    ),
-                    const SizedBox(height: 14),
-                    const Text('Review Submitted!', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Thanks for rating James. Your feedback helps keep the network reliable.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-                    ),
-                  ],
-                )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border2, borderRadius: BorderRadius.circular(10)))),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: CachedNetworkImage(imageUrl: AppAssets.mechanicPortrait, width: 48, height: 48, fit: BoxFit.cover),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('James Mitchell', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
-                              SizedBox(height: 2),
-                              Text('Job TF-8821 · Engine overheating', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('YOUR RATING', style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.4)),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(5, (i) {
-                        final n = i + 1;
-                        final on = n <= _ratingValue;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          child: InkWell(
-                            onTap: () => setState(() => _ratingValue = n),
-                            child: Icon(Icons.star_rounded, size: 36, color: on ? AppColors.primary : const Color(0xFF2A2A2A)),
-                          ),
-                        );
-                      }),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _ratingValue == 0
-                          ? ''
-                          : switch (_ratingValue) {
-                              1 => 'Poor',
-                              2 => 'Fair',
-                              3 => 'Good',
-                              4 => 'Very Good',
-                              _ => 'Excellent!',
-                            },
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'COMMENT (OPTIONAL)',
-                      style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.2),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _ratingComment,
-                      maxLines: 3,
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                      decoration: InputDecoration(
-                        hintText: 'Punctuality, quality of repair, professionalism...',
-                        hintStyle: TextStyle(color: AppColors.textHint.withValues(alpha: 0.7)),
-                        filled: true,
-                        fillColor: AppColors.card2,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border2)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border2)),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.5)),
-                        ),
-                        contentPadding: const EdgeInsets.all(14),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: _ratingValue == 0
-                          ? null
-                          : () async {
-                              setState(() => _ratingSubmitted = true);
-                              await Future<void>.delayed(const Duration(milliseconds: 1800));
-                              if (mounted) setState(() => _ratingOpen = false);
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        disabledBackgroundColor: AppColors.card2,
-                        foregroundColor: Colors.black,
-                        disabledForegroundColor: AppColors.textHint,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.star_rounded, size: 18),
-                          SizedBox(width: 8),
-                          Text('SUBMIT REVIEW', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1.2)),
-                        ],
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() => _ratingOpen = false),
-                      child: const Text('Not now', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                    ),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final badge = _fleetDetailHeaderBadge(_jobStep);
-    final paymentCfg = switch (_paymentStatus) {
-      'authorised' => (label: 'Authorised', fg: AppColors.orange, bg: AppColors.orange.withValues(alpha: 0.10), bd: AppColors.orange.withValues(alpha: 0.30)),
-      'paid' => (label: 'Paid', fg: AppColors.green, bg: AppColors.green.withValues(alpha: 0.10), bd: AppColors.green.withValues(alpha: 0.30)),
-      'refunded' => (label: 'Refunded', fg: const Color(0xFF60A5FA), bg: const Color(0xFF60A5FA).withValues(alpha: 0.10), bd: const Color(0xFF60A5FA).withValues(alpha: 0.30)),
-      _ => (label: 'Released to Mechanic', fg: AppColors.primary, bg: AppColors.primary.withValues(alpha: 0.10), bd: AppColors.primary.withValues(alpha: 0.30)),
-    };
-
-    return Stack(
-      children: [
-        ColoredBox(
-          color: AppColors.bg,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(12, 12, 20, 12),
-                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Material(
-                      color: AppColors.card2,
-                      borderRadius: BorderRadius.circular(12),
-                      child: InkWell(
-                        onTap: widget.onBack,
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.border2),
-                          ),
-                          child: Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: AppColors.textSecondary),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text(
-                                  'TF-8821',
-                                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.3),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: badge.bg,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: badge.border),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _jobStep == 2
-                                        ? AnimatedBuilder(
-                                            animation: _headerPulse,
-                                            builder: (context, c) => Opacity(opacity: 0.5 + 0.5 * _headerPulse.value, child: c),
-                                            child: Container(
-                                              width: 6,
-                                              height: 6,
-                                              decoration: BoxDecoration(color: badge.dot, shape: BoxShape.circle),
-                                            ),
-                                          )
-                                        : Container(
-                                            width: 6,
-                                            height: 6,
-                                            decoration: BoxDecoration(color: badge.dot, shape: BoxShape.circle),
-                                          ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      badge.shortLabel,
-                                      style: TextStyle(color: badge.fg, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'CA 456-789 · Tautliner · Engine overheating',
-                            style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 11, height: 1.3),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.card,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF1E1E1E)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _sectionTitle('STATUS TIMELINE'),
-                          const SizedBox(height: 16),
-                          ...List.generate(_kFleetDetailTimeline.length, (i) {
-                            final step = _kFleetDetailTimeline[i];
-                            final stepIdx = _flowIndex(step.flowKey);
-                            final isDone = stepIdx <= _jobStep;
-                            final isActive = stepIdx == _jobStep;
-                            final isLast = i == _kFleetDetailTimeline.length - 1;
-                            final lineColor = !isDone
-                                ? const Color(0xFF1E1E1E)
-                                : (isDone && !isActive)
-                                    ? AppColors.primary.withValues(alpha: 0.50)
-                                    : AppColors.primary.withValues(alpha: 0.30);
-
-                            return Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 28,
-                                      height: 28,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: isDone ? AppColors.primary : AppColors.card,
-                                        border: Border.all(
-                                          color: isDone ? AppColors.primary : AppColors.border2,
-                                          width: 2,
-                                        ),
-                                        boxShadow: isActive
-                                            ? [
-                                                BoxShadow(
-                                                  color: AppColors.primary.withValues(alpha: 0.45),
-                                                  blurRadius: 12,
-                                                  spreadRadius: 0,
-                                                ),
-                                              ]
-                                            : null,
-                                      ),
-                                      child: isDone
-                                          ? const Icon(Icons.check_rounded, size: 16, color: Colors.black)
-                                          : Center(
-                                              child: Container(
-                                                width: 8,
-                                                height: 8,
-                                                decoration: const BoxDecoration(color: Color(0xFF2A2A2A), shape: BoxShape.circle),
-                                              ),
-                                            ),
-                                    ),
-                                    if (!isLast)
-                                      Container(
-                                        width: 2,
-                                        height: 22,
-                                        margin: const EdgeInsets.symmetric(vertical: 4),
-                                        color: lineColor,
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            step.label,
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w900,
-                                              color: isActive
-                                                  ? AppColors.primary
-                                                  : isDone
-                                                      ? Colors.white
-                                                      : const Color(0xFF374151),
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          isDone || isActive ? step.time : '—',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontFamily: 'monospace',
-                                            color: isActive
-                                                ? AppColors.primary.withValues(alpha: 0.70)
-                                                : isDone
-                                                    ? AppColors.textMuted
-                                                    : const Color(0xFF1F2937),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                ],
-                            );
-                          }),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.only(top: 12),
-                            decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
-                            child: Row(
-                              children: [
-                                Text('DEMO:', style: TextStyle(color: AppColors.textHint.withValues(alpha: 0.85), fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Wrap(
-                                    spacing: 6,
-                                    runSpacing: 6,
-                                    children: List.generate(_kFleetDetailFlowOrder.length, (i) {
-                                      final key = _kFleetDetailFlowOrder[i];
-                                      final label = key.replaceAll('_', ' ');
-                                      final on = _jobStep == i;
-                                      return InkWell(
-                                        onTap: () => setState(() => _jobStep = i),
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: on ? AppColors.primary : AppColors.card2,
-                                            borderRadius: BorderRadius.circular(8),
-                                            border: Border.all(color: on ? AppColors.primary : AppColors.border2),
-                                          ),
-                                          child: Text(
-                                            label,
-                                            style: TextStyle(
-                                              fontSize: 8,
-                                              fontWeight: FontWeight.w900,
-                                              color: on ? Colors.black : AppColors.textMuted,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_mechanicAssigned)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.card,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF1E1E1E)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _sectionTitle('ASSIGNED MECHANIC'),
-                            const SizedBox(height: 12),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: CachedNetworkImage(
-                                    imageUrl: AppAssets.mechanicPortrait,
-                                    width: 48,
-                                    height: 48,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('James Mitchell', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
-                                      SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Icon(Icons.star_rounded, size: 14, color: AppColors.primary),
-                                          SizedBox(width: 4),
-                                          Text('4.9', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w600)),
-                                          Text(' · 184 jobs', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                                        ],
-                                      ),
-                                      SizedBox(height: 4),
-                                      Text('+44 7734 567 890', style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 11)),
-                                    ],
-                                  ),
-                                ),
-                                Material(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: InkWell(
-                                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Call not wired in prototype'))),
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: const SizedBox(
-                                      width: 44,
-                                      height: 44,
-                                      child: Icon(Icons.call_rounded, color: Colors.black, size: 22),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.only(top: 12),
-                              decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.schedule_rounded, size: 16, color: AppColors.textHint),
-                                  const SizedBox(width: 8),
-                                  Text('ETA (from mechanic)', style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 12)),
-                                  const Spacer(),
-                                  const Text('18 min', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.card,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF1E1E1E)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(color: AppColors.card2, borderRadius: BorderRadius.circular(12)),
-                              child: Icon(Icons.build_outlined, color: AppColors.textHint.withValues(alpha: 0.5)),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Awaiting mechanic assignment', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
-                                  SizedBox(height: 4),
-                                  Text('A nearby mechanic will be assigned shortly', style: TextStyle(color: AppColors.textHint, fontSize: 10)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.card,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF1E1E1E)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _sectionTitle('BREAKDOWN LOCATION'),
-                          const SizedBox(height: 12),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(Icons.location_on_outlined, size: 18, color: AppColors.textMuted.withValues(alpha: 0.9)),
-                              const SizedBox(width: 10),
-                              const Expanded(
-                                child: Text(
-                                  'N1 Northbound, near Buccleuch Interchange, Sandton, Gauteng',
-                                  style: TextStyle(color: Colors.white, fontSize: 13, height: 1.35),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          OutlinedButton(
-                            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Open in Maps'))),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.primary,
-                              side: BorderSide(color: AppColors.primary.withValues(alpha: 0.30)),
-                              backgroundColor: AppColors.primary.withValues(alpha: 0.05),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.open_in_new_rounded, size: 16),
-                                SizedBox(width: 8),
-                                Text('Open in Google Maps', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.3)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.card,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF1E1E1E)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              _sectionTitle('PAYMENT'),
-                              const Spacer(),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: paymentCfg.bg,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: paymentCfg.bd),
-                                ),
-                                child: Text(
-                                  paymentCfg.label,
-                                  style: TextStyle(color: paymentCfg.fg, fontSize: 10, fontWeight: FontWeight.w900),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          _payRow('Quote Amount', '£165', brightValue: true),
-                          _payRow('Platform Fee (12%)', '£20', mutedValue: true),
-                          _payRow('Pre-Auth Held', '£220', valueColor: AppColors.orange),
-                          _payRow('Card', 'VISA •••• 4891', mutedValue: true),
-                          const Divider(color: AppColors.border2, height: 20),
-                          _payRow('Total Payable', '£185', brightValue: true, valueYellow: true),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.only(top: 12),
-                            decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
-                            child: Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: ['authorised', 'paid', 'refunded', 'released'].map((s) {
-                                final on = _paymentStatus == s;
-                                return InkWell(
-                                  onTap: () => setState(() => _paymentStatus = s),
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: on ? AppColors.primary : AppColors.card2,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: on ? AppColors.primary : AppColors.border2),
-                                    ),
-                                    child: Text(
-                                      s,
-                                      style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: on ? Colors.black : AppColors.textMuted),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (_paymentStatus == 'released') ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.card,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.20)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(alpha: 0.10),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Icon(Icons.task_alt_rounded, color: AppColors.primary, size: 20),
-                                ),
-                                const SizedBox(width: 12),
-                                const Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('Invoice Ready', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900)),
-                                      SizedBox(height: 2),
-                                      Text('TF-8821 · CA 456-789 · 8 Mar 2026', style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: AppColors.card2, borderRadius: BorderRadius.circular(12)),
-                              child: const Column(
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text('Labour & Parts', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                                      Text('£165.00', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-                                    ],
-                                  ),
-                                  SizedBox(height: 6),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text('Platform Fee (12%)', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                                      Text('£20.00', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                                    ],
-                                  ),
-                                  SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text('Total Charged', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
-                                      Text('£185.00', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w900)),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            FilledButton(
-                              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Download PDF'))),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                foregroundColor: Colors.black,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.download_rounded, size: 18),
-                                  SizedBox(width: 8),
-                                  Text('DOWNLOAD INVOICE (PDF)', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.8)),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Center(
-                              child: Text(
-                                'Invoice ref: TF-INV-20260308-8821',
-                                style: TextStyle(color: AppColors.textHint.withValues(alpha: 0.85), fontSize: 9),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (_paymentStatus == 'released' && !_ratingSubmitted) ...[
-                      const SizedBox(height: 12),
-                      OutlinedButton(
-                        onPressed: () => setState(() {
-                          _ratingOpen = true;
-                          _ratingSubmitted = false;
-                          _ratingValue = 0;
-                          _ratingComment.clear();
-                        }),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.primary,
-                          side: BorderSide(color: AppColors.primary.withValues(alpha: 0.30)),
-                          backgroundColor: AppColors.card,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.star_rounded, size: 18, color: AppColors.primary),
-                                Icon(Icons.star_rounded, size: 18, color: AppColors.primary),
-                                Icon(Icons.star_rounded, size: 18, color: AppColors.primary),
-                                Icon(Icons.star_rounded, size: 18, color: AppColors.primary),
-                                Icon(Icons.star_rounded, size: 18, color: AppColors.primary),
-                              ],
-                            ),
-                            SizedBox(width: 10),
-                            Text('RATE YOUR MECHANIC', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (_paymentStatus == 'released' && _ratingSubmitted) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: AppColors.green.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.green.withValues(alpha: 0.30)),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.check_circle_rounded, color: AppColors.green, size: 18),
-                            SizedBox(width: 10),
-                            Expanded(child: Text('Review submitted — thank you!', style: TextStyle(color: AppColors.green, fontSize: 12, fontWeight: FontWeight.w600))),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    if (_mechanicStartedJourney && _paymentStatus != 'released')
-                      FilledButton(
-                        onPressed: () => setState(() => _contactOpen = true),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.chat_bubble_outline_rounded, size: 20),
-                            SizedBox(width: 10),
-                            Text('CONTACT MECHANIC', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.8)),
-                          ],
-                        ),
-                      ),
-                    if (_paymentStatus != 'released') ...[
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: () => setState(() => _cancelOpen = true),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.red,
-                          side: BorderSide(color: AppColors.red.withValues(alpha: 0.30)),
-                          backgroundColor: AppColors.red.withValues(alpha: 0.05),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: Text(
-                          _detailHasFee ? 'Cancel Job · $_detailFee fee (10%)' : 'Cancel Job — Free',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (_cancelOpen) _cancelSheet(),
-        if (_contactOpen) _contactSheet(),
-        if (_ratingOpen) _ratingSheet(),
-      ],
-    );
-  }
-
-  Widget _payRow(String label, String value, {bool brightValue = false, bool mutedValue = false, bool valueYellow = false, Color? valueColor}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueYellow
-                  ? AppColors.primary
-                  : valueColor ?? (mutedValue ? AppColors.textMuted : (brightValue ? Colors.white : AppColors.textSecondary)),
-              fontSize: 12,
-              fontWeight: brightValue || valueYellow ? FontWeight.w900 : FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FleetDetailBottomOverlay extends StatelessWidget {
-  const _FleetDetailBottomOverlay({required this.child, this.onBarrierTap, this.align = Alignment.bottomCenter});
-
-  final Widget child;
-  final VoidCallback? onBarrierTap;
-  final Alignment align;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: Material(
-        color: Colors.black.withValues(alpha: 0.85),
-        child: GestureDetector(
-          onTap: onBarrierTap,
-          behavior: HitTestBehavior.opaque,
-          child: Align(
-            alignment: align,
-            child: GestureDetector(
-              onTap: () {},
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: child,
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -4512,171 +3243,186 @@ class _FleetProfile extends StatelessWidget {
 
     return ColoredBox(
       color: _profileBg,
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          if (vm.meProfileLoading) ...[
-            const LinearProgressIndicator(
-              minHeight: 2,
-              backgroundColor: Color(0xFF1A1A1A),
-              color: AppColors.primary,
-            ),
-          ],
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-            child: Column(
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.20),
-                        blurRadius: 30,
-                        spreadRadius: 0,
+      child: RefreshIndicator(
+        color: AppColors.primary,
+        backgroundColor: const Color(0xFF0F0F0F),
+        onRefresh: vm.loadMeProfile,
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            if (vm.meProfileLoading) ...[
+              const LinearProgressIndicator(
+                minHeight: 2,
+                backgroundColor: Color(0xFF1A1A1A),
+                color: AppColors.primary,
+              ),
+            ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Refresh',
+                        onPressed: vm.meProfileLoading ? null : vm.loadMeProfile,
+                        icon: Icon(Icons.refresh_rounded, color: AppColors.textMuted.withValues(alpha: 0.9)),
                       ),
                     ],
                   ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    p.avatarInitials,
-                    style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.w900),
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.20),
+                          blurRadius: 30,
+                          spreadRadius: 0,
+                        ),
+                      ],
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      p.avatarInitials,
+                      style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.w900),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  p.headerTitle,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.2, height: 1.2),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  p.email,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.85), fontSize: 12),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  Text(
+                    p.headerTitle,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.2, height: 1.2),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    p.email,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.85), fontSize: 12),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1, thickness: 1, color: AppColors.border),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _profileSection(
-                  'Company Details',
-                  [
-                    ('Company Name', p.companyName),
-                    ('Reg Number', p.regNumber),
-                    ('VAT Number', p.vatNumber),
-                    ('Fleet Size', p.fleetSize),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _profileSection(
-                  'Contact Person',
-                  [
-                    ('Name', p.contactName),
-                    ('Role', p.contactRole),
-                    ('Phone', p.contactPhone),
-                    ('Email', p.email),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _profileSection(
-                  'Billing & Payment',
-                  [
-                    ('Card Number', p.cardDisplay),
-                    ('Expiry', p.expiryDisplay),
-                    ('CCV', '•••'),
-                    ('Billing Address', p.billingAddress),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Material(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    onTap: onEdit,
+            const Divider(height: 1, thickness: 1, color: AppColors.border),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _profileSection(
+                    'Company Details',
+                    [
+                      ('Company Name', p.companyName),
+                      ('Reg Number', p.regNumber),
+                      ('VAT Number', p.vatNumber),
+                      ('Fleet Size', p.fleetSize),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _profileSection(
+                    'Contact Person',
+                    [
+                      ('Name', p.contactName),
+                      ('Role', p.contactRole),
+                      ('Phone', p.contactPhone),
+                      ('Email', p.email),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _profileSection(
+                    'Billing & Payment',
+                    [
+                      ('Card Number', p.cardDisplay),
+                      ('Expiry', p.expiryDisplay),
+                      ('CCV', '•••'),
+                      ('Billing Address', p.billingAddress),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Material(
+                    color: AppColors.primary,
                     borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(Icons.edit_outlined, color: Colors.black, size: 18),
-                          SizedBox(width: 8),
-                          Text(
-                            'Edit Profile',
-                            style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 0.3),
-                          ),
-                        ],
+                    child: InkWell(
+                      onTap: onEdit,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(Icons.edit_outlined, color: Colors.black, size: 18),
+                            SizedBox(width: 8),
+                            Text(
+                              'Edit Profile',
+                              style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 0.3),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                _profileActionTile(
-                  icon: Icons.credit_card_rounded,
-                  title: 'Payment Methods',
-                  subtitle: 'Manage your cards & billing',
-                  onTap: onPayment,
-                ),
-                const SizedBox(height: 12),
-                _profileActionTile(
-                  icon: Icons.local_shipping_outlined,
-                  title: 'My Fleet',
-                  subtitle: 'Manage your vehicles',
-                  onTap: onVehicles,
-                ),
-                const SizedBox(height: 12),
-                _profileActionTile(
-                  icon: Icons.help_outline_rounded,
-                  title: 'Help & Support',
-                  subtitle: 'Send a message to the TruckFix team',
-                  onTap: onHelp,
-                ),
-                const SizedBox(height: 12),
-                Material(
-                  color: AppColors.red.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    onTap: onLogout,
+                  const SizedBox(height: 12),
+                  _profileActionTile(
+                    icon: Icons.credit_card_rounded,
+                    title: 'Payment Methods',
+                    subtitle: 'Manage your cards & billing',
+                    onTap: onPayment,
+                  ),
+                  const SizedBox(height: 12),
+                  _profileActionTile(
+                    icon: Icons.local_shipping_outlined,
+                    title: 'My Fleet',
+                    subtitle: 'Manage your vehicles',
+                    onTap: onVehicles,
+                  ),
+                  const SizedBox(height: 12),
+                  _profileActionTile(
+                    icon: Icons.help_outline_rounded,
+                    title: 'Help & Support',
+                    subtitle: 'Send a message to the TruckFix team',
+                    onTap: onHelp,
+                  ),
+                  const SizedBox(height: 12),
+                  Material(
+                    color: AppColors.red.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.red.withValues(alpha: 0.20)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(Icons.logout_rounded, color: AppColors.red, size: 18),
-                          SizedBox(width: 8),
-                          Text(
-                            'Log Out',
-                            style: TextStyle(color: AppColors.red, fontSize: 12, fontWeight: FontWeight.w600),
-                          ),
-                        ],
+                    child: InkWell(
+                      onTap: onLogout,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.red.withValues(alpha: 0.20)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(Icons.logout_rounded, color: AppColors.red, size: 18),
+                            SizedBox(width: 8),
+                            Text(
+                              'Log Out',
+                              style: TextStyle(color: AppColors.red, fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Account created · 07 Mar 2026 · TruckFix v2.4.1',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textHint.withValues(alpha: 0.65), fontSize: 10),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  Text(
+                    'Account created · 07 Mar 2026 · TruckFix v2.4.1',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textHint.withValues(alpha: 0.65), fontSize: 10),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -4842,6 +3588,9 @@ class _FleetEditProfileState extends State<_FleetEditProfile> {
   static const Color _fieldFill = Color(0xFF111111);
   static const Color _labelGray = Color(0xFF6B7280);
 
+  bool _didPrefillFromApi = false;
+  bool _saving = false;
+
   @override
   void initState() {
     super.initState();
@@ -4859,6 +3608,62 @@ class _FleetEditProfileState extends State<_FleetEditProfile> {
     _expiry = TextEditingController(text: '09 / 28');
     _ccv = TextEditingController(text: '');
     _billingAddress = TextEditingController(text: '123 Logistics Ave, Johannesburg');
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didPrefillFromApi) return;
+    final vm = context.read<FleetViewModel>();
+    final p = vm.meProfile;
+    if (p == null) return;
+
+    String clean(String v) {
+      final t = v.trim();
+      return (t == '—') ? '' : t;
+    }
+
+    _companyName.text = clean(p.companyName);
+    _regNumber.text = clean(p.regNumber);
+    _vatNumber.text = clean(p.vatNumber);
+    _fleetSize = clean(p.fleetSize).isEmpty ? _fleetSizes.first : clean(p.fleetSize);
+
+    _fullName.text = clean(p.contactName);
+    _role.text = clean(p.contactRole);
+    _phone.text = clean(p.contactPhone);
+    _email.text = clean(p.email);
+
+    // Payment summary in profile is display-only (masked). Keep demo input for card fields.
+    _billingAddress.text = clean(p.billingAddress);
+
+    _didPrefillFromApi = true;
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    final vm = context.read<FleetViewModel>();
+    try {
+      await vm.updateFleetOperatorProfile(
+        companyName: _companyName.text,
+        regNumber: _regNumber.text,
+        vatNumber: _vatNumber.text,
+        fleetSize: _fleetSize,
+        contactName: _fullName.text,
+        contactRole: _role.text,
+        contactPhone: _phone.text,
+        email: _email.text,
+        billingAddress: _billingAddress.text,
+      );
+      if (!mounted) return;
+      widget.onSave();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -4951,6 +3756,7 @@ class _FleetEditProfileState extends State<_FleetEditProfile> {
 
   @override
   Widget build(BuildContext context) {
+    final vm = context.watch<FleetViewModel>();
     return ColoredBox(
       color: _bg,
       child: SafeArea(
@@ -5144,7 +3950,7 @@ class _FleetEditProfileState extends State<_FleetEditProfile> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   ElevatedButton(
-                    onPressed: widget.onSave,
+                    onPressed: (_saving || vm.meProfileLoading) ? null : _save,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.black,

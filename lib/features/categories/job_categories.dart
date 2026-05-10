@@ -40,7 +40,7 @@ abstract final class JobCategories {
 
   /// `POST /jobs` `issueType` — backend expects SCREAMING_SNAKE enums (see job create response), not UI labels.
   static const Map<String, String> _apiIssueTypeByLabel = {
-    'Flat / Damaged Tyre': 'FLAT_DAMAGED_TYRE',
+    'Flat / Damaged Tyre': 'TYRES',
     'Battery Failure / Jump Start': 'BATTERY_FAILURE_JUMP_START',
     "Engine Won't Start": 'ENGINE_WONT_START',
     'Breakdown (Unknown Issue)': 'BREAKDOWN_UNKNOWN',

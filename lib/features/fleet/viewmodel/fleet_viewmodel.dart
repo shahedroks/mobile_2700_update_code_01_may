@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/models/fleet_job_summary.dart';
 import '../../../data/models/fleet_me_profile.dart';
+import '../../../data/models/fleet_track_job_detail.dart';
 import '../../../data/models/vehicle.dart';
 import '../../../data/repositories/app_repository.dart';
 import '../../../data/services/fleet_api_service.dart';
@@ -26,6 +27,55 @@ class FleetCompletedJob {
   final int rating;
   final String completedDate;
   final String total;
+}
+
+enum FleetTrackStatus { posted, assigned, enRoute, onSite, other }
+
+class FleetTrackingJobUi {
+  const FleetTrackingJobUi({
+    required this.backendId,
+    required this.id,
+    required this.truck,
+    required this.issue,
+    required this.status,
+    required this.statusLabel,
+    required this.statusTone,
+    required this.mechanic,
+    required this.eta,
+    required this.pay,
+    required this.ago,
+    required this.emergency,
+    required this.quoteAgreed,
+    required this.scheduledFor,
+    required this.canTrack,
+    required this.cancellationCanCancel,
+    required this.cancellationIsFree,
+    required this.cancellationFee,
+    required this.currency,
+  });
+
+  final String backendId;
+  final String id;
+  final String truck;
+  final String issue;
+
+  final FleetTrackStatus status;
+  final String statusLabel;
+  final String statusTone; // red | yellow | green | amber | blue ...
+
+  final String? mechanic;
+  final String? eta;
+  final String pay;
+  final String ago;
+  final bool emergency;
+  final bool quoteAgreed;
+  final DateTime? scheduledFor;
+
+  final bool canTrack;
+  final bool cancellationCanCancel;
+  final bool cancellationIsFree;
+  final num cancellationFee;
+  final String currency;
 }
 
 class FleetViewModel extends ChangeNotifier {
@@ -74,6 +124,12 @@ class FleetViewModel extends ChangeNotifier {
 
   List<FleetJobSummary> activeJobs = const [];
   List<FleetCompletedJob> completedJobs = const [];
+  List<FleetTrackingJobUi> trackingJobs = const [];
+
+  String? trackingDetailJobId;
+  FleetTrackJobDetailUi? trackingJobDetail;
+  bool trackingDetailLoading = false;
+  String? trackingDetailError;
 
   FleetMeProfileUi? meProfile;
   bool meProfileLoading = false;
@@ -98,6 +154,94 @@ class FleetViewModel extends ChangeNotifier {
       meProfileLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> updateFleetOperatorProfile({
+    required String companyName,
+    required String regNumber,
+    required String vatNumber,
+    required String fleetSize,
+    required String contactName,
+    required String contactRole,
+    required String contactPhone,
+    required String email,
+    required String billingAddress,
+  }) async {
+    final token = _auth.session?.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      throw Exception('Not signed in');
+    }
+
+    meProfileLoading = true;
+    meProfileError = null;
+    notifyListeners();
+    try {
+      // Backend expects a flat body (same as Postman PATCH /api/v1/users/me).
+      final bill = billingAddress.trim();
+      final fleet = fleetSize.trim().replaceAll('–', '-');
+      final payload = <String, dynamic>{
+        'email': email.trim(),
+        'companyName': companyName.trim(),
+        'regNumber': regNumber.trim(),
+        'vatNumber': vatNumber.trim(),
+        'fleetSize': fleet,
+        'contactName': contactName.trim(),
+        'contactRole': contactRole.trim(),
+        'phone': contactPhone.trim(),
+        'billingAddress': bill,
+        'defaultAddress': bill,
+      };
+
+      await _usersApi.updateMe(accessToken: token, payload: payload);
+      final body = await _usersApi.fetchMe(accessToken: token);
+      meProfile = FleetMeProfileUi.fromApiBody(body);
+    } catch (e) {
+      meProfileError = e.toString();
+      rethrow;
+    } finally {
+      meProfileLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> openTrackingJobDetail(String backendJobId) async {
+    final id = backendJobId.trim();
+    if (id.isEmpty) return;
+    trackingDetailJobId = id;
+    trackingJobDetail = null;
+    trackingDetailError = null;
+    tab = 'tracking-detail';
+    notifyListeners();
+    await loadTrackingJobDetail();
+  }
+
+  Future<void> loadTrackingJobDetail() async {
+    final id = trackingDetailJobId;
+    final token = _auth.session?.accessToken;
+    if (id == null || id.isEmpty || token == null || token.trim().isEmpty) {
+      return;
+    }
+    trackingDetailLoading = true;
+    trackingDetailError = null;
+    notifyListeners();
+    try {
+      final res = await _api.fetchJob(accessToken: token, jobId: id);
+      trackingJobDetail = FleetTrackJobDetailUi.fromApiBody(res);
+    } catch (e) {
+      trackingDetailError = e.toString();
+      trackingJobDetail = null;
+    } finally {
+      trackingDetailLoading = false;
+      notifyListeners();
+    }
+  }
+
+  void closeTrackingJobDetail() {
+    trackingDetailJobId = null;
+    trackingJobDetail = null;
+    trackingDetailError = null;
+    tab = 'tracking';
+    notifyListeners();
   }
 
   Future<void> refresh() async {
@@ -132,9 +276,11 @@ class FleetViewModel extends ChangeNotifier {
       // Fetch lists from /jobs for active + completed.
       final activeRes = await _api.fetchJobs(accessToken: token, tab: 'active', page: 1, limit: 20);
       final completedRes = await _api.fetchJobs(accessToken: token, tab: 'completed', page: 1, limit: 20);
+      final trackingRes = await _api.fetchJobs(accessToken: token, tab: 'tracking', page: 1, limit: 20);
 
       activeJobs = _parseFleetJobSummaries(activeRes['data']);
       completedJobs = _parseCompletedJobs(completedRes['data']);
+      trackingJobs = _parseTrackingJobs(trackingRes['data']);
       hasLoadedOnce = true;
     } catch (e) {
       loadError = e.toString();
@@ -162,6 +308,90 @@ class FleetViewModel extends ChangeNotifier {
         .map(_mapCompletedJob)
         .whereType<FleetCompletedJob>()
         .toList(growable: false);
+  }
+
+  static List<FleetTrackingJobUi> _parseTrackingJobs(dynamic data) {
+    if (data is! List) return const [];
+    return data
+        .whereType<Map>()
+        .map((m) => m.cast<String, dynamic>())
+        .map(_mapTrackingJob)
+        .whereType<FleetTrackingJobUi>()
+        .toList(growable: false);
+  }
+
+  static FleetTrackingJobUi? _mapTrackingJob(Map<String, dynamic> j) {
+    final backendId = ((j['_id'] as String?) ?? '').trim();
+    final jobCode = (j['jobCode'] as String?) ?? '';
+    if (jobCode.trim().isEmpty && backendId.isEmpty) return null;
+
+    final title = (j['title'] as String?) ?? '';
+    final postedAgoLabel = (j['postedAgoLabel'] as String?) ?? '';
+
+    final vehicle = (j['vehicle'] is Map<String, dynamic>) ? j['vehicle'] as Map<String, dynamic> : const {};
+    final reg = (vehicle['registration'] as String?) ?? '';
+    final type = (vehicle['type'] as String?) ?? '';
+    final truck = [type, reg].where((s) => s.trim().isNotEmpty).join(' · ');
+
+    final statusUi = (j['statusUi'] is Map<String, dynamic>) ? j['statusUi'] as Map<String, dynamic> : const {};
+    final rawStatus = ((j['status'] as String?) ?? '').trim();
+    final statusLabel = ((statusUi['label'] as String?) ?? rawStatus).trim();
+    final statusTone = ((statusUi['tone'] as String?) ?? '').trim();
+
+    FleetTrackStatus statusFromApi() {
+      final s = (rawStatus.isNotEmpty ? rawStatus : statusLabel).toUpperCase();
+      if (s.contains('POSTED')) return FleetTrackStatus.posted;
+      if (s.contains('ASSIGNED') || (j['assignedAt'] is String && (j['assignedAt'] as String).trim().isNotEmpty)) {
+        return FleetTrackStatus.assigned;
+      }
+      if (s.contains('EN_ROUTE') || s.contains('EN ROUTE')) return FleetTrackStatus.enRoute;
+      if (s.contains('ON_SITE') || s.contains('ON SITE')) return FleetTrackStatus.onSite;
+      return FleetTrackStatus.other;
+    }
+
+    final assignedMechanic = (j['assignedMechanic'] is Map<String, dynamic>) ? j['assignedMechanic'] as Map<String, dynamic> : const {};
+    final mechanicName = (assignedMechanic['displayName'] as String?)?.trim();
+
+    final amount = (j['finalAmount'] as num?) ?? (j['acceptedAmount'] as num?) ?? (j['estimatedPayout'] as num?) ?? 0;
+    final currency = (j['currency'] as String?) ?? 'GBP';
+
+    DateTime? parseDate(String? s) {
+      if (s == null || s.trim().isEmpty) return null;
+      return DateTime.tryParse(s);
+    }
+
+    final scheduledFor = parseDate(j['scheduledFor'] as String?);
+    final emergency = scheduledFor == null;
+    final quoteAgreed = (j['acceptedAmount'] is num) || (j['finalAmount'] is num);
+
+    final actions = (j['actions'] is Map<String, dynamic>) ? j['actions'] as Map<String, dynamic> : const {};
+    final canTrack = actions['canTrack'] == true;
+    final cancellation = (actions['cancellation'] is Map<String, dynamic>) ? actions['cancellation'] as Map<String, dynamic> : const {};
+    final cancellationCanCancel = cancellation['canCancel'] == true;
+    final cancellationIsFree = cancellation['isFree'] == true;
+    final cancellationFee = (cancellation['fee'] is num) ? (cancellation['fee'] as num) : 0;
+
+    return FleetTrackingJobUi(
+      backendId: backendId.isNotEmpty ? backendId : jobCode,
+      id: jobCode.isNotEmpty ? jobCode : backendId,
+      truck: truck.isEmpty ? '—' : truck,
+      issue: title.isEmpty ? '—' : title,
+      status: statusFromApi(),
+      statusLabel: statusLabel.isEmpty ? '—' : statusLabel,
+      statusTone: statusTone,
+      mechanic: (mechanicName == null || mechanicName.isEmpty) ? null : mechanicName,
+      eta: null,
+      pay: _formatMoney(amount.toDouble(), currency),
+      ago: postedAgoLabel.isEmpty ? '—' : postedAgoLabel,
+      emergency: emergency,
+      quoteAgreed: quoteAgreed,
+      scheduledFor: scheduledFor,
+      canTrack: canTrack,
+      cancellationCanCancel: cancellationCanCancel,
+      cancellationIsFree: cancellationIsFree,
+      cancellationFee: cancellationFee,
+      currency: currency,
+    );
   }
 
   static FleetCompletedJob? _mapCompletedJob(Map<String, dynamic> j) {

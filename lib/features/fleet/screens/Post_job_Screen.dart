@@ -329,7 +329,7 @@ class _FleetPostJobScreenState extends State<FleetPostJobScreen> {
         ? '${_jobCategoryLabel!} — ${reg.isEmpty ? 'Truck' : reg}'
         : 'Breakdown — ${reg.isEmpty ? 'Truck' : reg}';
 
-    // API expects SCREAMING_SNAKE enums (e.g. FLAT_DAMAGED_TYRE), not human labels — labels are rejected.
+    // API `issueType` is a coarse enum; tyre jobs use TYRES + issueSubtype FLAT_DAMAGED_TYRE (see Postman).
     final issueType = JobCategories.apiIssueTypeForLabel(
       (_jobCategoryLabel?.trim().isNotEmpty == true)
           ? _jobCategoryLabel!.trim()
@@ -369,9 +369,9 @@ class _FleetPostJobScreenState extends State<FleetPostJobScreen> {
     if (_isTyreJob) {
       fields['issueSubtype'] = 'FLAT_DAMAGED_TYRE';
       final tyreMap = <String, dynamic>{
-        if (_tyreSize.text.trim().isNotEmpty) 'size': _tyreSize.text.trim(),
-        if (_tyreSide.isNotEmpty) 'side': _tyreSideForApi(_tyreSide),
-        if (_tyreAxle.text.trim().isNotEmpty) 'axle': _tyreAxle.text.trim(),
+        'size': _tyreSize.text.trim(),
+        'side': _tyreSide.isNotEmpty ? _tyreSideForApi(_tyreSide) : '',
+        'axlePosition': _tyreAxle.text.trim(),
       };
       fields['tyreDetails'] = jsonEncode(tyreMap);
     }
@@ -383,28 +383,56 @@ class _FleetPostJobScreenState extends State<FleetPostJobScreen> {
     return fields;
   }
 
+  DateTime? _parseLocalDateTime(String dateStr, String timeStr) {
+    try {
+      final partsD = dateStr.split('-').map((x) => int.parse(x)).toList();
+      final partsT = timeStr.split(':').map((x) => int.parse(x)).toList();
+      return DateTime(partsD[0], partsD[1], partsD[2], partsT[0], partsT[1]);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Schedulable-only: user-facing validation before POST (matches backend rules).
+  String? _schedulableAvailabilityError() {
+    if (_jobMode != _FleetJobMode.schedulable) return null;
+    final fd = _schedFromDate.text.trim();
+    final ft = _schedFromTime.text.trim();
+    if (fd.isEmpty || ft.isEmpty) {
+      return 'Please choose when the truck is available (FROM date & time).';
+    }
+    final from = _parseLocalDateTime(fd, ft);
+    if (from == null) return 'Invalid FROM date or time.';
+    final td = _schedToDate.text.trim();
+    final tt = _schedToTime.text.trim();
+    if (td.isEmpty && tt.isEmpty) return null;
+    if (td.isEmpty || tt.isEmpty) {
+      return 'Set both TO date and time, or clear both for an open-ended window.';
+    }
+    final to = _parseLocalDateTime(td, tt);
+    if (to == null) return 'Invalid TO date or time.';
+    if (!to.isAfter(from)) {
+      return 'End time must be after start time.';
+    }
+    return null;
+  }
+
   String? _buildAvailabilityWindowJson() {
     if (_jobMode != _FleetJobMode.schedulable) return null;
     final fromDate = _schedFromDate.text.trim();
     final fromTime = _schedFromTime.text.trim();
     if (fromDate.isEmpty || fromTime.isEmpty) return null;
 
-    DateTime? parseLocal(String d, String t) {
-      try {
-        final partsD = d.split('-').map((x) => int.parse(x)).toList();
-        final partsT = t.split(':').map((x) => int.parse(x)).toList();
-        return DateTime(partsD[0], partsD[1], partsD[2], partsT[0], partsT[1]);
-      } catch (_) {
-        return null;
-      }
-    }
-
-    final from = parseLocal(fromDate, fromTime);
+    final from = _parseLocalDateTime(fromDate, fromTime);
     if (from == null) return null;
 
     final toDate = _schedToDate.text.trim();
     final toTime = _schedToTime.text.trim();
-    final to = (toDate.isNotEmpty && toTime.isNotEmpty) ? parseLocal(toDate, toTime) : null;
+    final parsedTo =
+        (toDate.isNotEmpty && toTime.isNotEmpty) ? _parseLocalDateTime(toDate, toTime) : null;
+    // API rejects equal times and any end before start ("to must be after from").
+    final DateTime? to =
+        (parsedTo != null && parsedTo.isAfter(from)) ? parsedTo : null;
 
     return jsonEncode({
       'from': from.toUtc().toIso8601String(),
@@ -510,6 +538,21 @@ class _FleetPostJobScreenState extends State<FleetPostJobScreen> {
     setState(() => _jobPhotos.removeAt(index));
   }
 
+  /// Flat tyre jobs must send tyreDetails (validated before submit).
+  String? _tyreJobValidationError() {
+    if (!_isTyreJob) return null;
+    if (_tyreSize.text.trim().isEmpty) {
+      return 'Please enter tyre size (e.g. 295/80 R22.5).';
+    }
+    if (_tyreSide.isEmpty) {
+      return 'Please select tyre side (Near side / Off side / Both).';
+    }
+    if (_tyreAxle.text.trim().isEmpty) {
+      return 'Please enter axle position (e.g. Drive 1, Steer).';
+    }
+    return null;
+  }
+
   Future<void> _submitJob() async {
     if (_submittingJob) return;
     if (_jobCategoryLabel == null || _jobCategoryLabel!.trim().isEmpty) {
@@ -517,6 +560,18 @@ class _FleetPostJobScreenState extends State<FleetPostJobScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select a job category.')),
       );
+      return;
+    }
+    final tyreErr = _tyreJobValidationError();
+    if (tyreErr != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tyreErr)));
+      return;
+    }
+    final schedErr = _schedulableAvailabilityError();
+    if (schedErr != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(schedErr)));
       return;
     }
     setState(() => _submittingJob = true);
@@ -1038,6 +1093,15 @@ class _FleetPostJobScreenState extends State<FleetPostJobScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'If you set an end time, it must be after the start. Leave date/time empty for open-ended.',
+            style: TextStyle(
+              color: AppColors.textHint.withValues(alpha: 0.85),
+              fontSize: 10,
+              height: 1.25,
+            ),
           ),
         ],
       ),

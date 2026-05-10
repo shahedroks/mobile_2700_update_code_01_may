@@ -25,6 +25,26 @@ class UsersApiService {
     return _decodeOrThrow(res, defaultMessage: 'Failed to load profile');
   }
 
+  /// Update current user profile via `PATCH /api/v1/users/me`.
+  ///
+  /// Backend typically accepts `fleetProfile` (and/or snake_case variants).
+  Future<Map<String, dynamic>> updateMe({
+    required String accessToken,
+    required Map<String, dynamic> payload,
+  }) async {
+    final uri = Uri.parse('$_baseUrl${ApiConstants.usersMePath}');
+    final res = await _client.patch(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode(payload),
+    );
+    return _decodeOrThrow(res, defaultMessage: 'Failed to update profile');
+  }
+
   Map<String, dynamic> _decodeOrThrow(http.Response res, {required String defaultMessage}) {
     Map<String, dynamic> body;
     try {

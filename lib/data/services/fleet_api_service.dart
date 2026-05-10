@@ -48,6 +48,23 @@ class FleetApiService {
     return _decodeOrThrow(res, defaultMessage: 'Failed to fetch jobs');
   }
 
+  /// Single job detail: `GET /api/v1/jobs/:jobId`
+  Future<Map<String, dynamic>> fetchJob({
+    required String accessToken,
+    required String jobId,
+  }) async {
+    final id = jobId.trim();
+    final uri = Uri.parse('$_baseUrl${ApiConstants.jobsPath}/${Uri.encodeComponent(id)}');
+    final res = await _client.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+    return _decodeOrThrow(res, defaultMessage: 'Failed to fetch job');
+  }
+
   Future<Map<String, dynamic>> createJob({
     required String accessToken,
     required String title,
