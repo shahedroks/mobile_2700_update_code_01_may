@@ -155,8 +155,15 @@ Color _fleetStatusLeftBorder(FleetJobSummary j) {
 
 String _fleetMechanicLabel(FleetJobSummary j) {
   if (j.status.toUpperCase().contains('POST')) return 'Awaiting mechanic…';
-  final id = j.id;
-  if (id == 'TF-8814' || id == 'TF-8809') return 'Sipho M.';
+  // Use real API name when available; shorten to "First L." format
+  final full = j.mechanic?.trim() ?? '';
+  if (full.isNotEmpty) {
+    final parts = full.split(' ');
+    if (parts.length >= 2) {
+      return '${parts.first} ${parts.last[0]}.';
+    }
+    return full;
+  }
   return 'James M.';
 }
 
@@ -168,13 +175,10 @@ String? _fleetEtaLabel(FleetJobSummary j) {
 String _fleetTruckDisplay(FleetJobSummary j) => j.truck.replaceAll('•', '·');
 
 String _fleetJobPayDisplay(FleetJobSummary j) {
-  return switch (j.id) {
-    'TF-8823' => '£275',
-    'TF-8821' => '£165',
-    'TF-8819' => '£145',
-    'TF-8809' => '£260',
-    _ => '£—',
-  };
+  // Use real pay from API when available
+  final p = j.pay?.trim();
+  if (p != null && p.isNotEmpty) return p;
+  return '£—';
 }
 
 /// CachedNetworkImage misbehaves / asserts on empty URLs.

@@ -4,6 +4,8 @@ import 'package:geolocator/geolocator.dart';
 import '../../../data/models/job_offer.dart';
 import '../../../data/repositories/app_repository.dart';
 import '../../../data/services/mechanic_api_service.dart';
+// ignore: unused_import
+import '../../../features/categories/job_taxonomy.dart';
 
 class MechanicMyQuote {
   const MechanicMyQuote({
@@ -311,6 +313,11 @@ class MechanicViewModel extends ChangeNotifier {
   String city = 'Manchester';
   bool showHelp = false;
 
+  // Job Feed
+  List<JobOffer> feedJobs = [];
+  bool feedLoading = false;
+  String? feedError;
+
   // My Quotes
   List<MechanicMyQuote> myQuotes = [];
   bool myQuotesLoading = false;
@@ -457,6 +464,36 @@ class MechanicViewModel extends ChangeNotifier {
       myQuotesError = e.toString();
     } finally {
       myQuotesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadJobFeed() async {
+    feedLoading = true;
+    feedError = null;
+    notifyListeners();
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) {
+        throw Exception('Missing access token. Please login again.');
+      }
+      final coords = await _getRealCoordsOrFallback();
+      final body = await _api.fetchJobFeed(
+        accessToken: token,
+        lat: coords.lat,
+        lng: coords.lng,
+        radiusMiles: radiusMi,
+      );
+      final list = (body['data'] as List<dynamic>?) ?? [];
+      feedJobs = list
+          .whereType<Map<String, dynamic>>()
+          .map(JobOffer.fromJson)
+          .toList();
+    } catch (e) {
+      feedError = e.toString();
+    } finally {
+      feedLoading = false;
       notifyListeners();
     }
   }

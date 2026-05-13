@@ -555,6 +555,18 @@ class FleetViewModel extends ChangeNotifier {
     final urgencyCfg = _urgencyColors(urgency);
     final statusCfg = _toneColors(tone, fallback: urgencyCfg.fg);
 
+    final mech = (j['assignedMechanic'] is Map<String, dynamic>)
+        ? j['assignedMechanic'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    final mechanicName = ((mech['displayName'] as String?) ?? '').trim();
+
+    final amount = (j['finalAmount'] as num?) ??
+        (j['acceptedAmount'] as num?) ??
+        (j['estimatedPayout'] as num?);
+    final currency = ((j['currency'] as String?) ?? 'GBP').toUpperCase();
+    final paySym = switch (currency) { 'GBP' => '£', 'USD' => r'$', 'EUR' => '€', _ => '' };
+    final payStr = amount != null ? '$paySym${amount.round()}' : null;
+
     return FleetJobSummary(
       id: displayId,
       backendId: backendId.isNotEmpty ? backendId : null,
@@ -566,6 +578,8 @@ class FleetViewModel extends ChangeNotifier {
       urgencyBgHex: urgencyCfg.bg.toARGB32(),
       statusColorHex: statusCfg.fg.toARGB32(),
       statusBgHex: statusCfg.bg.toARGB32(),
+      mechanic: mechanicName.isNotEmpty ? mechanicName : null,
+      pay: payStr,
     );
   }
 

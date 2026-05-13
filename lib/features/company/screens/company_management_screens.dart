@@ -2371,7 +2371,7 @@ class CompanyEarningsView extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
-                        height: 90,
+                        height: 96,
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [

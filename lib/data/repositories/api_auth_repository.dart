@@ -254,8 +254,11 @@ class ApiAuthRepository implements AuthRepository {
   }) async {
     final uri = Uri.parse('$_baseUrl${ApiConstants.authRegisterPath}');
 
+    // Sole traders register as MECHANIC; companies register as COMPANY.
+    final role = businessType == 'COMPANY' ? 'COMPANY' : 'MECHANIC';
+
     final payload = <String, dynamic>{
-      'role': 'MECHANIC',
+      'role': role,
       'email': email,
       'password': password,
       'confirmPassword': confirmPassword,

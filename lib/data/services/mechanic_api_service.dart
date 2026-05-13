@@ -37,6 +37,35 @@ class MechanicApiService {
     return _decodeOrThrow(res, defaultMessage: 'Failed to update availability');
   }
 
+  /// Job feed for mechanic: `GET /api/v1/jobs?feed=true&lat=&lng=&radiusMiles=`
+  Future<Map<String, dynamic>> fetchJobFeed({
+    required String accessToken,
+    required double lat,
+    required double lng,
+    int radiusMiles = 15,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/v1/jobs').replace(
+      queryParameters: {
+        'feed': 'true',
+        'lat': '$lat',
+        'lng': '$lng',
+        'radiusMiles': '$radiusMiles',
+        'page': '$page',
+        'limit': '$limit',
+      },
+    );
+    final res = await _client.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+    return _decodeOrThrow(res, defaultMessage: 'Failed to fetch job feed');
+  }
+
   /// Earnings summary: `GET /api/v1/earnings/summary`
   Future<Map<String, dynamic>> fetchEarningsSummary({
     required String accessToken,

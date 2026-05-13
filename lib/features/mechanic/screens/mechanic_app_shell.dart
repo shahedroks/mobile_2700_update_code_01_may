@@ -481,22 +481,46 @@ class _MechBottomNav extends StatelessWidget {
   }
 }
 
-class _JobFeedPage extends StatelessWidget {
+class _JobFeedPage extends StatefulWidget {
   const _JobFeedPage();
 
+  @override
+  State<_JobFeedPage> createState() => _JobFeedPageState();
+}
+
+class _JobFeedPageState extends State<_JobFeedPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final vm = context.read<MechanicViewModel>();
+      if (vm.online) vm.loadJobFeed();
+    });
+  }
+
   Future<void> _toggleOnline(BuildContext context) async {
+    final vm = context.read<MechanicViewModel>();
     try {
-      await context.read<MechanicViewModel>().toggleOnline();
+      await vm.toggleOnline();
+      if (vm.online && mounted) vm.loadJobFeed();
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
+  List<JobOffer> _filtered(MechanicViewModel vm) {
+    if (vm.maxDistMi == null) return vm.feedJobs;
+    return vm.feedJobs
+        .where((j) => j.distanceMi <= vm.maxDistMi!)
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<MechanicViewModel>();
-    final jobs = vm.online ? vm.filteredJobs() : <JobOffer>[];
+    final jobs = vm.online ? _filtered(vm) : <JobOffer>[];
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       children: [
@@ -576,40 +600,6 @@ class _JobFeedPage extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            OutlinedButton(
-              onPressed: () => _MechanicFeedSheets.serviceArea(context),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: AppColors.primary.withValues(alpha: 0.35)),
-                foregroundColor: AppColors.primary,
-                backgroundColor: AppColors.card,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-              ),
-              child: Text('${vm.radiusMi} mi radius', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => _MechanicFeedSheets.serviceArea(context),
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: AppColors.card,
-                  side: const BorderSide(color: AppColors.border2),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-                ),
-                child: Text(
-                  '${vm.city}, ${vm.postcode}',
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.textSecondary),
-                ),
-              ),
-            ),
-          ],
-        ),
         if (vm.online) ...[
           const SizedBox(height: 10),
           SingleChildScrollView(
@@ -640,6 +630,41 @@ class _JobFeedPage extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: TextStyle(color: AppColors.textMuted, fontSize: 13),
                   ),
+                ],
+              ),
+            ),
+          )
+        else if (vm.feedLoading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+          )
+        else if (vm.feedError != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Column(
+              children: [
+                const Icon(Icons.error_outline, color: AppColors.textMuted, size: 36),
+                const SizedBox(height: 10),
+                Text(vm.feedError!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: vm.loadJobFeed,
+                  style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.primary), foregroundColor: AppColors.primary),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          )
+        else if (jobs.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(40),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.search_off, size: 48, color: AppColors.textHint),
+                  SizedBox(height: 12),
+                  Text('No jobs nearby', style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
                 ],
               ),
             ),
@@ -796,7 +821,9 @@ class _JobFeedPage extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _MechanicFeedSheets {
+  // ignore: unused_element
   static String _radiusLabelFor(int miles) {
     if (miles <= 5) return 'Local';
     if (miles <= 15) return 'Town / City';
@@ -805,6 +832,7 @@ class _MechanicFeedSheets {
     return 'Nationwide';
   }
 
+  // ignore: unused_element
   static Future<void> serviceArea(BuildContext context) async {
     final vm = context.read<MechanicViewModel>();
     var draftRadius = vm.radiusMi;
@@ -4964,6 +4992,12 @@ class _MechPayment extends StatefulWidget {
 
 class _MechPaymentState extends State<_MechPayment> {
   late List<_PaymentMethodItem> _cards;
+  bool _showAddForm = false;
+
+  final _cardNumCtrl = TextEditingController();
+  final _expiryCtrl = TextEditingController();
+  final _cvcCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -4972,6 +5006,15 @@ class _MechPaymentState extends State<_MechPayment> {
       _PaymentMethodItem(id: 'visa', brand: 'Visa', last4: '4242', expires: '12/26', isDefault: true),
       _PaymentMethodItem(id: 'mc', brand: 'Mastercard', last4: '8888', expires: '09/25', isDefault: false),
     ];
+  }
+
+  @override
+  void dispose() {
+    _cardNumCtrl.dispose();
+    _expiryCtrl.dispose();
+    _cvcCtrl.dispose();
+    _nameCtrl.dispose();
+    super.dispose();
   }
 
   void _setDefault(String id) {
@@ -4993,8 +5036,140 @@ class _MechPaymentState extends State<_MechPayment> {
   }
 
   void _addCard() {
+    setState(() => _showAddForm = !_showAddForm);
+    if (!_showAddForm) {
+      _cardNumCtrl.clear();
+      _expiryCtrl.clear();
+      _cvcCtrl.clear();
+      _nameCtrl.clear();
+    }
+  }
+
+  void _saveCard() {
+    // TODO: connect to payment provider
+    setState(() {
+      _showAddForm = false;
+      _cardNumCtrl.clear();
+      _expiryCtrl.clear();
+      _cvcCtrl.clear();
+      _nameCtrl.clear();
+    });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Add card flow — connect to your payment provider')),
+      const SnackBar(content: Text('Card saved — connect to your payment provider')),
+    );
+  }
+
+  static InputDecoration _inputDeco(String hint) => InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Color(0xFF4B5563), fontSize: 13),
+        filled: true,
+        fillColor: Color(0xFF111111),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.primary),
+        ),
+      );
+
+  Widget _addCardForm() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.40)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'NEW CARD DETAILS',
+            style: TextStyle(
+              color: AppColors.primary,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.6,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('CARD NUMBER', style: TextStyle(color: Color(0xFF6B7280), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _cardNumCtrl,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+            decoration: _inputDeco('1234 5678 9012 3456'),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('EXPIRY', style: TextStyle(color: Color(0xFF6B7280), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _expiryCtrl,
+                      keyboardType: TextInputType.datetime,
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                      decoration: _inputDeco('MM/YY'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('CVC', style: TextStyle(color: Color(0xFF6B7280), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _cvcCtrl,
+                      keyboardType: TextInputType.number,
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                      decoration: _inputDeco('123'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Text('CARDHOLDER NAME', style: TextStyle(color: Color(0xFF6B7280), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _nameCtrl,
+            textCapitalization: TextCapitalization.words,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+            decoration: _inputDeco('John Smith'),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: _saveCard,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+              child: const Text(
+                'SAVE CARD',
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1.2),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -5045,6 +5220,10 @@ class _MechPaymentState extends State<_MechPayment> {
                   const SizedBox(height: 14),
                 ],
                 _DashedAddCardButton(onTap: _addCard),
+                if (_showAddForm) ...[
+                  const SizedBox(height: 14),
+                  _addCardForm(),
+                ],
               ],
             ),
           ),
