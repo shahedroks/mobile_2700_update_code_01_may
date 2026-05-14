@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../data/models/job_offer.dart';
+import '../../../data/models/mechanic_me_profile.dart';
 import '../../../data/repositories/app_repository.dart';
 import '../../../data/services/mechanic_api_service.dart';
 // ignore: unused_import
@@ -22,7 +23,6 @@ class MechanicMyQuote {
     this.jobBackendId,
     this.summaryLine,
     this.canOpenActiveJob = false,
-    this.canResubmit = false,
   });
 
   final String id;
@@ -42,9 +42,6 @@ class MechanicMyQuote {
 
   /// `actions.canOpenActiveJob` — whether tapping should go to the active job.
   final bool canOpenActiveJob;
-
-  /// `actions.canResubmit` — whether a "Resubmit" button should be shown.
-  final bool canResubmit;
 
   static String _timeAgo(String? iso) {
     if (iso == null) return '';
@@ -89,7 +86,6 @@ class MechanicMyQuote {
 
     final actions = (json['actions'] as Map<String, dynamic>?) ?? {};
     final canOpenActiveJob = actions['canOpenActiveJob'] == true;
-    final canResubmit = actions['canResubmit'] == true;
     final summaryLine = (json['summaryLine'] as String?)?.trim();
 
     return MechanicMyQuote(
@@ -106,7 +102,6 @@ class MechanicMyQuote {
       jobBackendId: job['_id'] as String?,
       summaryLine: (summaryLine != null && summaryLine.isNotEmpty) ? summaryLine : null,
       canOpenActiveJob: canOpenActiveJob,
-      canResubmit: canResubmit,
     );
   }
 
@@ -184,6 +179,160 @@ class MechanicEarningsSummary {
       allTimeNet: toInt(cards['allTimeNet']),
       currentMonthLabel: currentMonthLabel,
       bars: bars,
+    );
+  }
+}
+
+// ─── Earnings jobs list (`GET /api/v1/earnings/jobs`) ───────────────────────
+
+class MechanicEarningsJobsListMeta {
+  const MechanicEarningsJobsListMeta({
+    required this.page,
+    required this.limit,
+    required this.total,
+    required this.totalPages,
+  });
+
+  final int page;
+  final int limit;
+  final int total;
+  final int totalPages;
+
+  static MechanicEarningsJobsListMeta? maybeParse(dynamic raw) {
+    if (raw is! Map<String, dynamic>) return null;
+    int toI(dynamic v) => (v is num) ? v.toInt() : (int.tryParse('$v') ?? 0);
+    return MechanicEarningsJobsListMeta(
+      page: toI(raw['page']),
+      limit: toI(raw['limit']),
+      total: toI(raw['total']),
+      totalPages: toI(raw['totalPages']),
+    );
+  }
+}
+
+class MechanicCompletedEarningJob {
+  const MechanicCompletedEarningJob({
+    required this.id,
+    required this.jobCode,
+    required this.dateLabel,
+    required this.vehicleLine,
+    required this.issueLine,
+    required this.customerName,
+    required this.durationLabel,
+    required this.rating,
+    required this.netEarnedDisplay,
+    required this.grossDisplay,
+    required this.feeDisplay,
+    required this.netDisplay,
+    required this.platformFeePercent,
+    required this.grossAmount,
+    required this.platformFeeAmount,
+    required this.netAmount,
+    required this.currency,
+    required this.invoiceNo,
+    required this.invoiceDownloadPath,
+  });
+
+  final String id;
+  final String jobCode;
+  final String dateLabel;
+  final String vehicleLine;
+  final String issueLine;
+  final String customerName;
+  final String durationLabel;
+  final int rating;
+  final String netEarnedDisplay;
+  final String grossDisplay;
+  final String feeDisplay;
+  final String netDisplay;
+  final int platformFeePercent;
+  final double grossAmount;
+  final double platformFeeAmount;
+  final double netAmount;
+  final String currency;
+  final String invoiceNo;
+  final String invoiceDownloadPath;
+
+  static String _s(dynamic v) => v == null ? '' : v.toString().trim();
+
+  static double _d(dynamic x) => (x is num) ? x.toDouble() : (double.tryParse('$x') ?? 0);
+
+  static String _moneyLabel(double amount, String currency) {
+    final c = currency.toUpperCase().trim().isEmpty ? 'GBP' : currency.trim().toUpperCase();
+    final sym = c == 'GBP' ? '£' : (c == 'USD' ? r'$' : '$c ');
+    if (amount == amount.roundToDouble()) return '$sym${amount.round()}';
+    return '$sym${amount.toStringAsFixed(2)}';
+  }
+
+  factory MechanicCompletedEarningJob.fromJson(Map<String, dynamic> json) {
+    final job = (json['job'] as Map<String, dynamic>?) ?? {};
+    final inv = (json['invoice'] as Map<String, dynamic>?) ?? {};
+    final ui = (json['ui'] as Map<String, dynamic>?) ?? {};
+    final bd = (ui['breakdown'] as Map<String, dynamic>?) ?? {};
+    final primary = (ui['primaryAction'] as Map<String, dynamic>?) ?? {};
+
+    final currency = _s(ui['currency']).isNotEmpty
+        ? _s(ui['currency'])
+        : (_s(json['currency']).isNotEmpty ? _s(json['currency']) : 'GBP');
+
+    var grossAmount = _d(json['grossAmount']);
+    if (grossAmount == 0) grossAmount = _d(bd['grossAmount']);
+    if (grossAmount == 0) grossAmount = _d(inv['totalAmount']);
+
+    var netAmount = _d(json['netAmount']);
+    if (netAmount == 0) netAmount = _d(bd['netAmount']);
+
+    var platformFeeAmount = _d(json['platformFee']);
+    if (platformFeeAmount == 0) platformFeeAmount = _d(bd['platformFeeAmount']);
+
+    final pctRaw = (json['platformFeePercent'] as num?)?.toDouble() ??
+        (bd['platformFeePercent'] as num?)?.toDouble() ??
+        12;
+    final platformFeePercent = pctRaw.round();
+
+    var grossDisplay = _s(ui['grossLabel']);
+    if (grossDisplay.isEmpty) grossDisplay = _moneyLabel(grossAmount, currency);
+
+    var netEarnedDisplay = _s(ui['netEarnedLabel']);
+    if (netEarnedDisplay.isEmpty) netEarnedDisplay = _moneyLabel(netAmount, currency);
+
+    var netDisplay = _s(ui['netLabel']);
+    if (netDisplay.isEmpty) netDisplay = netEarnedDisplay;
+
+    var feeDisplay = _s(ui['platformFeeWholeLabel']);
+    if (feeDisplay.isEmpty) feeDisplay = _s(ui['platformFeeLabel']);
+    if (feeDisplay.isEmpty) {
+      feeDisplay = '-${_moneyLabel(platformFeeAmount, currency)}'.replaceFirst('--', '-');
+    }
+
+    var issueLine = _s(ui['issueLine']);
+    if (issueLine.isEmpty) issueLine = _s(job['issueSummary']);
+    if (issueLine.isEmpty) issueLine = _s(job['completionSummary']);
+    if (issueLine.isEmpty) issueLine = _s(job['description']);
+    if (issueLine.isEmpty) issueLine = _s(json['notes']);
+
+    final path = _s(primary['path']).isNotEmpty ? _s(primary['path']) : _s(inv['downloadPath']);
+
+    return MechanicCompletedEarningJob(
+      id: _s(json['_id']),
+      jobCode: _s(ui['jobCode']).isNotEmpty ? _s(ui['jobCode']) : _s(job['jobCode']),
+      dateLabel: _s(ui['headlineDateLabel']).isNotEmpty ? _s(ui['headlineDateLabel']) : _s(job['completedAtLabel']),
+      vehicleLine: _s(ui['vehicleLine']).isNotEmpty ? _s(ui['vehicleLine']) : _s(job['vehicleDisplay']),
+      issueLine: issueLine,
+      customerName: _s(ui['customerName']).isNotEmpty ? _s(ui['customerName']) : _s(job['customerName']),
+      durationLabel: _s(ui['durationLabel']).isNotEmpty ? _s(ui['durationLabel']) : _s(job['durationLabel']),
+      rating: ((ui['rating'] as num?)?.toInt() ?? (job['rating'] as num?)?.toInt() ?? 0).clamp(0, 5),
+      netEarnedDisplay: netEarnedDisplay,
+      grossDisplay: grossDisplay,
+      feeDisplay: feeDisplay,
+      netDisplay: netDisplay,
+      platformFeePercent: platformFeePercent,
+      grossAmount: grossAmount,
+      platformFeeAmount: platformFeeAmount,
+      netAmount: netAmount,
+      currency: currency,
+      invoiceNo: _s(inv['invoiceNo']),
+      invoiceDownloadPath: path,
     );
   }
 }
@@ -334,7 +483,38 @@ class MechanicViewModel extends ChangeNotifier {
   bool earningsLoading = false;
   String? earningsError;
 
+  /// `GET /api/v1/earnings/jobs` — completed jobs for Earnings & Invoices list.
+  List<MechanicCompletedEarningJob> earningsJobs = [];
+  MechanicEarningsJobsListMeta? earningsJobsMeta;
+  bool earningsJobsLoading = false;
+  String? earningsJobsError;
+
+  /// Parsed `GET /api/v1/users/me` payload for mechanic Profile tab.
+  MechanicMeProfile? meProfile;
+  bool meProfileLoading = false;
+  String? meProfileError;
+
   List<JobOffer> get rawJobs => _jobs.mechanicJobsNearby();
+
+  Future<void> loadMeProfile() async {
+    meProfileLoading = true;
+    meProfileError = null;
+    notifyListeners();
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) {
+        throw Exception('Missing access token. Please login again.');
+      }
+      final body = await _api.fetchMe(accessToken: token);
+      meProfile = MechanicMeProfile.fromUsersMeEnvelope(body);
+    } catch (e) {
+      meProfileError = e.toString();
+    } finally {
+      meProfileLoading = false;
+      notifyListeners();
+    }
+  }
 
   List<JobOffer> filteredJobs() {
     var list = rawJobs.where((j) => j.distanceMi <= radiusMi);
@@ -347,6 +527,9 @@ class MechanicViewModel extends ChangeNotifier {
   void setTab(String t) {
     tab = t;
     notifyListeners();
+    if (t == 'profile') {
+      loadMeProfile();
+    }
   }
 
   static const Map<String, _Coord> _cityCoords = {
@@ -516,6 +699,46 @@ class MechanicViewModel extends ChangeNotifier {
       earningsLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> loadEarningsJobs({int page = 1, int limit = 20}) async {
+    earningsJobsLoading = true;
+    earningsJobsError = null;
+    notifyListeners();
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) {
+        throw Exception('Missing access token. Please login again.');
+      }
+      final body = await _api.fetchEarningsJobs(accessToken: token, page: page, limit: limit);
+      earningsJobsMeta = MechanicEarningsJobsListMeta.maybeParse(body['meta']);
+      final raw = body['data'];
+      earningsJobs = raw is List<dynamic>
+          ? raw
+              .whereType<Map<String, dynamic>>()
+              .map(MechanicCompletedEarningJob.fromJson)
+              .toList()
+          : <MechanicCompletedEarningJob>[];
+    } catch (e) {
+      earningsJobsError = e.toString();
+    } finally {
+      earningsJobsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// GET helper for invoice paths (`ui.primaryAction.path` / `invoice.downloadPath`).
+  Future<Map<String, dynamic>> fetchMechanicAuthorizedGet(String path) async {
+    final session = await _auth.getSession();
+    final token = session?.accessToken;
+    if (token == null || token.isEmpty) throw Exception('Not authenticated');
+    final rel = path.trim();
+    if (rel.isEmpty) throw Exception('Invalid link');
+    return _api.fetchMechanicAuthorizedGet(
+      accessToken: token,
+      path: rel.startsWith('/') ? rel : '/$rel',
+    );
   }
 
   Future<void> loadMyJobs() async {

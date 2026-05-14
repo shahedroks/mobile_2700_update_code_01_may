@@ -187,6 +187,8 @@ class MemoryJobRepository implements JobRepository {
           type: 'Tautliner',
           categoryBadge: 'TAUTLINER',
           lastService: '15 Jan 2025',
+          photoUrl: AppAssets.fleetVehicleThumb1,
+          photoUrlSecondary: AppAssets.fleetVehicleSecondary1,
         ),
         Vehicle(
           id: 'fv2',
@@ -195,6 +197,8 @@ class MemoryJobRepository implements JobRepository {
           type: 'Rigid',
           categoryBadge: 'RIGID 8T',
           lastService: '3 Feb 2025',
+          photoUrl: AppAssets.fleetVehicleThumb2,
+          photoUrlSecondary: AppAssets.fleetVehicleSecondary2,
         ),
         Vehicle(
           id: 'fv3',
@@ -203,6 +207,8 @@ class MemoryJobRepository implements JobRepository {
           type: 'Tanker',
           categoryBadge: 'TANKER',
           lastService: '28 Dec 2024',
+          photoUrl: AppAssets.fleetVehicleThumb3,
+          photoUrlSecondary: AppAssets.fleetVehicleSecondary3,
         ),
       ];
 

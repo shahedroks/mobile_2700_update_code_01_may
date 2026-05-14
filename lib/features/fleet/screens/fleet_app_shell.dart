@@ -9,8 +9,10 @@ import '../../../core/constants/app_assets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/fleet_job_quote.dart';
 import '../../../data/models/fleet_job_summary.dart';
+import '../../../data/models/session.dart';
 import '../../../data/models/vehicle.dart';
 import '../../../data/repositories/app_repository.dart';
+import '../../../data/services/support_api_service.dart';
 import '../../../routes/app_routes.dart';
 import '../../auth/viewmodel/auth_viewmodel.dart';
 import '../models/fleet_chat_session.dart';
@@ -307,7 +309,7 @@ class FleetAppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (ctx) => FleetViewModel(ctx.read<JobRepository>(), ctx.read<AuthViewModel>()),
+      create: (ctx) => FleetViewModel(ctx.read<AuthViewModel>()),
       child: const _FleetScaffold(),
     );
   }
@@ -577,6 +579,8 @@ class _FleetCompletionReviewOverlayState extends State<_FleetCompletionReviewOve
   int _rating = 0;
   final _reviewText = TextEditingController();
   bool _reviewSubmitted = false;
+  bool _reviewSubmitting = false;
+  String? _reviewErr;
   bool _approveLoading = false;
   String? _approveErr;
 
@@ -589,16 +593,46 @@ class _FleetCompletionReviewOverlayState extends State<_FleetCompletionReviewOve
     super.dispose();
   }
 
-  void _barrierTap() {
-    if (_showReview && _reviewSubmitted) return;
-    widget.onClose();
+  Future<void> _submitReview() async {
+    if (_rating == 0 || _reviewSubmitting) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final vm = context.read<FleetViewModel>();
+    final id = widget.backendJobId?.trim();
+    if (id == null || id.isEmpty) {
+      messenger?.showSnackBar(
+        const SnackBar(content: Text('Cannot submit review — this job has no server id.')),
+      );
+      return;
+    }
+    setState(() {
+      _reviewSubmitting = true;
+      _reviewErr = null;
+    });
+    try {
+      final comment = _reviewText.text.trim();
+      await vm.submitFleetJobReview(
+        backendJobId: id,
+        rating: _rating,
+        comment: comment.isEmpty ? null : comment,
+      );
+      if (!mounted) return;
+      setState(() {
+        _reviewSubmitting = false;
+        _reviewSubmitted = true;
+      });
+      await vm.refresh();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _reviewSubmitting = false;
+        _reviewErr = e.toString();
+      });
+    }
   }
 
-  Future<void> _submitReview() async {
-    if (_rating == 0) return;
-    setState(() => _reviewSubmitted = true);
-    await Future<void>.delayed(const Duration(milliseconds: 1500));
-    if (!mounted) return;
+  void _barrierTap() {
+    if (_reviewSubmitting) return;
+    if (_showReview && _reviewSubmitted) return;
     widget.onClose();
   }
 
@@ -763,6 +797,8 @@ class _FleetCompletionReviewOverlayState extends State<_FleetCompletionReviewOve
                         _approveLoading = false;
                         _showApproval = false;
                         _showReview = true;
+                        _reviewErr = null;
+                        _reviewSubmitting = false;
                       });
                       await vm.refresh();
                     } catch (e) {
@@ -844,7 +880,18 @@ class _FleetCompletionReviewOverlayState extends State<_FleetCompletionReviewOve
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.textMuted, fontSize: 12),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
+          FilledButton(
+            onPressed: widget.onClose,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('DONE', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+          ),
+          const SizedBox(height: 8),
         ],
       );
     }
@@ -876,7 +923,7 @@ class _FleetCompletionReviewOverlayState extends State<_FleetCompletionReviewOve
               child: IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                onPressed: () => setState(() => _rating = n),
+                onPressed: _reviewSubmitting ? null : () => setState(() => _rating = n),
                 icon: Icon(
                   on ? Icons.star_rounded : Icons.star_outline_rounded,
                   size: 40,
@@ -900,6 +947,7 @@ class _FleetCompletionReviewOverlayState extends State<_FleetCompletionReviewOve
         TextField(
           controller: _reviewText,
           maxLines: 3,
+          enabled: !_reviewSubmitting,
           style: const TextStyle(color: Colors.white, fontSize: 12),
           decoration: InputDecoration(
             hintText: 'Share your experience with this mechanic...',
@@ -915,11 +963,18 @@ class _FleetCompletionReviewOverlayState extends State<_FleetCompletionReviewOve
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           ),
         ),
+        if (_reviewErr != null && _reviewErr!.trim().isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text(
+            _reviewErr!,
+            style: TextStyle(color: AppColors.red.withValues(alpha: 0.95), fontSize: 12, height: 1.35),
+          ),
+        ],
         const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: _rating > 0 ? _submitReview : null,
+            onPressed: (_rating > 0 && !_reviewSubmitting) ? _submitReview : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.black,
@@ -929,14 +984,20 @@ class _FleetCompletionReviewOverlayState extends State<_FleetCompletionReviewOve
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 0,
             ),
-            child: const Text(
-              'SUBMIT REVIEW',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1),
-            ),
+            child: _reviewSubmitting
+                ? const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black54),
+                  )
+                : const Text(
+                    'SUBMIT REVIEW',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1),
+                  ),
           ),
         ),
         TextButton(
-          onPressed: widget.onClose,
+          onPressed: _reviewSubmitting ? null : widget.onClose,
           child: Text(
             'Skip for now',
             style: TextStyle(color: const Color(0xFF93C5FD), fontSize: 12, fontWeight: FontWeight.w600),
@@ -3035,7 +3096,18 @@ class _FleetTrackingList extends StatefulWidget {
 
 class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTickerProviderStateMixin {
   FleetTrackingJobUi? _cancelJob;
+  bool _cancelSubmitting = false;
+  String? _cancelErr;
+
   late final AnimationController _pulse;
+
+  void _dismissCancelModal() {
+    setState(() {
+      _cancelJob = null;
+      _cancelSubmitting = false;
+      _cancelErr = null;
+    });
+  }
 
   @override
   void initState() {
@@ -3057,7 +3129,7 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
     return 'Cancel - Free';
   }
 
-  Widget _cancelModal() {
+  Widget _cancelModal(FleetViewModel vm) {
     final job = _cancelJob;
     if (job == null) return const SizedBox.shrink();
     final fee = _fleetTrackingHasFee(job);
@@ -3080,7 +3152,9 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
       child: Material(
         color: Colors.black.withValues(alpha: 0.85),
         child: InkWell(
-          onTap: () => setState(() => _cancelJob = null),
+          onTap: () {
+            if (!_cancelSubmitting) _dismissCancelModal();
+          },
           child: Align(
             alignment: Alignment.bottomCenter,
             child: InkWell(
@@ -3150,23 +3224,67 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
                         ),
                       ),
                     ],
+                    if (_cancelErr != null && _cancelErr!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _cancelErr!,
+                        style: TextStyle(color: AppColors.red.withValues(alpha: 0.95), fontSize: 12, height: 1.35),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     FilledButton(
-                      onPressed: () => setState(() => _cancelJob = null),
+                      onPressed: !_cancelSubmitting
+                          ? () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              final bid = job.backendId.trim();
+                              if (bid.isEmpty) {
+                                messenger.showSnackBar(
+                                  const SnackBar(content: Text('This job cannot be cancelled from the app (no server id).')),
+                                );
+                                _dismissCancelModal();
+                                return;
+                              }
+                              setState(() {
+                                _cancelSubmitting = true;
+                                _cancelErr = null;
+                              });
+                              try {
+                                await vm.cancelFleetJob(bid);
+                                if (!mounted) return;
+                                _dismissCancelModal();
+                                await vm.refresh();
+                                messenger.showSnackBar(const SnackBar(content: Text('Job cancelled')));
+                              } catch (e) {
+                                if (!mounted) return;
+                                setState(() {
+                                  _cancelSubmitting = false;
+                                  _cancelErr = e.toString();
+                                });
+                              }
+                            }
+                          : null,
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.red,
                         foregroundColor: Colors.white,
+                        disabledBackgroundColor: AppColors.red.withValues(alpha: 0.45),
+                        disabledForegroundColor: Colors.white.withValues(alpha: 0.75),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      child: Text(
-                        fee ? 'Confirm Cancellation ($feeStr fee)' : 'Confirm Cancellation — Free',
-                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
-                      ),
+                      child: _cancelSubmitting
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                            )
+                          : Text(
+                              fee ? 'Confirm Cancellation ($feeStr fee)' : 'Confirm Cancellation — Free',
+                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+                            ),
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton(
-                      onPressed: () => setState(() => _cancelJob = null),
+                      onPressed: _cancelSubmitting ? null : _dismissCancelModal,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.textSecondary,
                         side: const BorderSide(color: AppColors.border2),
@@ -3425,7 +3543,13 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
                                         Expanded(
                                           child: canCancel
                                               ? OutlinedButton(
-                                                  onPressed: (job.cancellationCanCancel) ? () => setState(() => _cancelJob = job) : null,
+                                                  onPressed: (job.cancellationCanCancel)
+                                                      ? () => setState(() {
+                                                            _cancelJob = job;
+                                                            _cancelErr = null;
+                                                            _cancelSubmitting = false;
+                                                          })
+                                                      : null,
                                                   style: OutlinedButton.styleFrom(
                                                     foregroundColor: fee ? AppColors.red : AppColors.textMuted,
                                                     side: BorderSide(
@@ -3489,7 +3613,7 @@ class _FleetTrackingListState extends State<_FleetTrackingList> with SingleTicke
             ),
           ],
         ),
-        _cancelModal(),
+        _cancelModal(vm),
       ],
     );
   }
@@ -4355,6 +4479,55 @@ class _FleetEditProfileState extends State<_FleetEditProfile> {
   }
 }
 
+(String make, String model) _fleetSplitMakeModel(String label) {
+  final p = label.trim().split(RegExp(r'\s+'));
+  if (p.isEmpty) {
+    return ('', '');
+  }
+  if (p.length == 1) {
+    return (p.single, '');
+  }
+  return (p.first, p.sublist(1).join(' '));
+}
+
+Widget _fleetFleetHeaderBackSquare({required VoidCallback onPressed}) {
+  return Material(
+    color: const Color(0xFF1A1A1A),
+    borderRadius: BorderRadius.circular(12),
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: onPressed,
+      child: const SizedBox(
+        width: 32,
+        height: 32,
+        child: Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF9CA3AF), size: 14),
+      ),
+    ),
+  );
+}
+
+void _showFleetEditVehicleSheet(BuildContext context, Vehicle vehicle) {
+  showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    barrierColor: Colors.black.withValues(alpha: 0.85),
+    builder: (_) => _FleetEditVehicleSheet(vehicle: vehicle),
+  );
+}
+
+void _showFleetAddVehicleSheet(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    barrierColor: Colors.black.withValues(alpha: 0.85),
+    builder: (_) => const _FleetAddVehicleSheet(),
+  );
+}
+
 class _FleetVehicleDetail extends StatelessWidget {
   const _FleetVehicleDetail({
     required this.vehicle,
@@ -4366,21 +4539,709 @@ class _FleetVehicleDetail extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onRequest;
 
+  static const Color _cardBg = Color(0xFF121212);
+  static const Color _jobNested = Color(0xFF0F0F0F);
+  static const Color _completeGreen = Color(0xFF22C55E);
+
+  /// Demo rows matching `VehicleFleetScreen` detail mock (no API yet).
+  static const List<({String title, String subtitle})> _demoRecentJobs = [
+    (title: 'Engine diagnostics', subtitle: '2 Mar 2025 · James Mitchell'),
+    (title: 'Brake replacement', subtitle: '15 Jan 2025 · Tom Stevens'),
+  ];
+
+  Widget _sectionTitle(String uppercase) {
+    return Text(
+      uppercase,
+      style: const TextStyle(
+        color: AppColors.primary,
+        fontSize: 12,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 1.4,
+      ),
+    );
+  }
+
+  Widget _infoRow(BuildContext context, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(label, style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.9), fontSize: 13, fontWeight: FontWeight.w500)),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        Row(
+    final (fallbackMake, fallbackModel) = _fleetSplitMakeModel(vehicle.label);
+    final make = vehicle.make?.trim().isNotEmpty == true ? vehicle.make!.trim() : fallbackMake;
+    final model = vehicle.model?.trim().isNotEmpty == true ? vehicle.model!.trim() : fallbackModel;
+    final subtitle = [make, model].where((s) => s.isNotEmpty).join(' ');
+
+    return ColoredBox(
+      color: _FleetDashTheme.bgBlack,
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
           children: [
-            IconButton(onPressed: onBack, icon: const Icon(Icons.arrow_back_ios_new)),
-            Text(vehicle.label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _fleetFleetHeaderBackSquare(onPressed: onBack),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        vehicle.plate,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: -0.3),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle.isEmpty ? '—' : subtitle,
+                        style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.98), fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+              decoration: BoxDecoration(
+                color: _cardBg,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _sectionTitle('VEHICLE INFORMATION'),
+                  const Divider(height: 22, thickness: 0.6, color: Color(0xFF262626)),
+                  _infoRow(context, 'Registration', vehicle.plate),
+                  Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
+                  _infoRow(context, 'Make', make.isEmpty ? '—' : make),
+                  Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
+                  _infoRow(context, 'Model', model.isEmpty ? '—' : model),
+                  if (vehicle.year != null) ...[
+                    Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
+                    _infoRow(context, 'Year', '${vehicle.year}'),
+                  ],
+                  if (vehicle.vin != null && vehicle.vin!.trim().isNotEmpty) ...[
+                    Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
+                    _infoRow(context, 'VIN', vehicle.vin!.trim()),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+              decoration: BoxDecoration(
+                color: _cardBg,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _sectionTitle('RECENT JOBS'),
+                  const SizedBox(height: 14),
+                  ..._demoRecentJobs.map((job) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _jobNested,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF2A2A2A)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    job.title,
+                                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    job.subtitle,
+                                    style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 12, fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: _completeGreen.withValues(alpha: 0.75)),
+                              ),
+                              child: const Text(
+                                'COMPLETE',
+                                style: TextStyle(color: _completeGreen, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.9),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onRequest,
+                icon: const Icon(Icons.build_rounded, size: 22, color: Colors.black),
+                label: const Text(
+                  'REQUEST SERVICE',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1.6),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.black,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _showFleetEditVehicleSheet(context, vehicle),
+                icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 20),
+                label: const Text(
+                  'Edit Vehicle Details',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  backgroundColor: const Color(0xFF141414),
+                ),
+              ),
+            ),
           ],
         ),
-        Text(vehicle.plate, style: const TextStyle(color: AppColors.textMuted)),
-        const SizedBox(height: 24),
-        ElevatedButton(onPressed: onRequest, child: const Text('Request service')),
+      ),
+    );
+  }
+}
+
+/// Edit vehicle — registration / make / model + `PATCH /api/v1/fleet/vehicles/:id`.
+class _FleetEditVehicleSheet extends StatefulWidget {
+  const _FleetEditVehicleSheet({required this.vehicle});
+
+  final Vehicle vehicle;
+
+  @override
+  State<_FleetEditVehicleSheet> createState() => _FleetEditVehicleSheetState();
+}
+
+class _FleetEditVehicleSheetState extends State<_FleetEditVehicleSheet> {
+  static const Color _sheetBg = Color(0xFF0E0E0E);
+  static const Color _fieldBg = Color(0xFF111111);
+  static const Color _border = Color(0xFF2A2A2A);
+
+  late final TextEditingController _registration;
+  late final TextEditingController _make;
+  late final TextEditingController _model;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final v = widget.vehicle;
+    final (fbMake, fbModel) = _fleetSplitMakeModel(v.label);
+    _registration = TextEditingController(text: v.plate == '—' ? '' : v.plate);
+    _make = TextEditingController(text: (v.make?.trim().isNotEmpty == true) ? v.make!.trim() : fbMake);
+    _model = TextEditingController(text: (v.model?.trim().isNotEmpty == true) ? v.model!.trim() : fbModel);
+  }
+
+  @override
+  void dispose() {
+    _registration.dispose();
+    _make.dispose();
+    _model.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _decoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: AppColors.textHint.withValues(alpha: 0.65), fontSize: 14),
+      filled: true,
+      fillColor: _fieldBg,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _border)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _border)),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.55)),
+      ),
+      isDense: true,
+    );
+  }
+
+  Widget _labeledField(String uppercaseLabel, TextEditingController c, String hint) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          uppercaseLabel,
+          style: TextStyle(fontSize: 11, color: AppColors.textHint.withValues(alpha: 0.9), fontWeight: FontWeight.w600, letterSpacing: 2.2),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: c,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+          decoration: _decoration(hint),
+        ),
       ],
+    );
+  }
+
+  Future<void> _save(BuildContext modalContext) async {
+    if (_submitting) return;
+    final messenger = ScaffoldMessenger.maybeOf(modalContext);
+    final registration = _registration.text.trim();
+    final make = _make.text.trim();
+    final model = _model.text.trim();
+
+    if (registration.isEmpty) {
+      messenger?.showSnackBar(const SnackBar(content: Text('Please enter a registration')));
+      return;
+    }
+    if (make.isEmpty || model.isEmpty) {
+      messenger?.showSnackBar(const SnackBar(content: Text('Please enter make and model')));
+      return;
+    }
+
+    setState(() => _submitting = true);
+    final vm = modalContext.read<FleetViewModel>();
+    final err = await vm.updateFleetVehicle(
+      vehicle: widget.vehicle,
+      registration: registration,
+      make: make,
+      model: model,
+    );
+    if (!modalContext.mounted) return;
+    setState(() => _submitting = false);
+
+    if (err != null) {
+      messenger?.showSnackBar(SnackBar(content: Text(err)));
+      return;
+    }
+
+    messenger?.showSnackBar(const SnackBar(content: Text('Vehicle updated')));
+    Navigator.of(modalContext).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    final maxHeight = (MediaQuery.sizeOf(context).height * 0.58).clamp(400.0, 520.0);
+
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: SizedBox(
+        height: maxHeight,
+        child: Material(
+          color: Colors.transparent,
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            child: DecoratedBox(
+              decoration: const BoxDecoration(color: _sheetBg, border: Border(top: BorderSide(color: _border))),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 5,
+                      decoration: BoxDecoration(color: const Color(0xFF333333), borderRadius: BorderRadius.circular(999)),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Edit Vehicle',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: -0.2),
+                          ),
+                        ),
+                        Material(
+                          color: const Color(0xFF1A1A1A),
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => Navigator.of(context).pop(),
+                            child: const SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: Icon(Icons.close_rounded, color: Color(0xFF6B7280), size: 18),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFF1A1A1A)),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _labeledField('REGISTRATION', _registration, 'e.g. CA 456-789'),
+                          const SizedBox(height: 16),
+                          _labeledField('MAKE', _make, 'e.g. MAN, Volvo, Mercedes'),
+                          const SizedBox(height: 16),
+                          _labeledField('MODEL', _model, 'e.g. TGX 18.640'),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFF1A1A1A)),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(20, 14, 20, 8 + bottom),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _submitting ? null : () => _save(context),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.black,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            child: _submitting
+                                ? const SizedBox(
+                                    height: 22,
+                                    width: 22,
+                                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.black),
+                                  )
+                                : const Text(
+                                    'SAVE CHANGES',
+                                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1.2),
+                                  ),
+                          ),
+                        ),
+                        Center(
+                          child: TextButton(
+                            onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+                            child: Text(
+                              'Cancel',
+                              style: TextStyle(
+                                color: AppColors.textMuted.withValues(alpha: 0.95),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Add Vehicle bottom sheet — layout matches `VehicleFleetScreen` sheet in `check.tsx`.
+class _FleetAddVehicleSheet extends StatefulWidget {
+  const _FleetAddVehicleSheet();
+
+  @override
+  State<_FleetAddVehicleSheet> createState() => _FleetAddVehicleSheetState();
+}
+
+class _FleetAddVehicleSheetState extends State<_FleetAddVehicleSheet> {
+  static const List<String> _vehicleTypes = ['Tautliner', 'Rigid Truck', 'Tanker', 'Flatbed', 'Semi-Trailer'];
+
+  late final TextEditingController _registration;
+  late final TextEditingController _make;
+  late final TextEditingController _model;
+  late final TextEditingController _vin;
+  late final TextEditingController _mileage;
+
+  String _type = _vehicleTypes.first;
+  bool _submitting = false;
+
+  static const Color _sheetBg = Color(0xFF0E0E0E);
+  static const Color _fieldBg = Color(0xFF111111);
+  static const Color _border = Color(0xFF2A2A2A);
+
+  @override
+  void initState() {
+    super.initState();
+    _registration = TextEditingController();
+    _make = TextEditingController();
+    _model = TextEditingController();
+    _vin = TextEditingController();
+    _mileage = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _registration.dispose();
+    _make.dispose();
+    _model.dispose();
+    _vin.dispose();
+    _mileage.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _decoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: AppColors.textHint.withValues(alpha: 0.65), fontSize: 14),
+      filled: true,
+      fillColor: _fieldBg,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _border)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _border)),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.55)),
+      ),
+      isDense: true,
+    );
+  }
+
+  Widget _labeledField(String uppercaseLabel, TextEditingController c, String hint, {TextInputType? kb}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          uppercaseLabel,
+          style: TextStyle(fontSize: 11, color: AppColors.textHint.withValues(alpha: 0.9), fontWeight: FontWeight.w600, letterSpacing: 2.2),
+        ),
+        const SizedBox(height: 8),
+        TextField(controller: c, keyboardType: kb, style: const TextStyle(color: Colors.white, fontSize: 14), decoration: _decoration(hint)),
+      ],
+    );
+  }
+
+  static int? _parseMileageKm(String raw) {
+    final digits = raw.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.isEmpty) return null;
+    return int.tryParse(digits);
+  }
+
+  Future<void> _submit(BuildContext modalContext) async {
+    if (_submitting) return;
+    final messenger = ScaffoldMessenger.maybeOf(modalContext);
+    final registration = _registration.text.trim();
+    final make = _make.text.trim();
+    final model = _model.text.trim();
+    final vin = _vin.text.trim();
+    final mileageKm = _parseMileageKm(_mileage.text);
+
+    if (registration.isEmpty) {
+      messenger?.showSnackBar(const SnackBar(content: Text('Please enter a registration')));
+      return;
+    }
+    if (make.isEmpty || model.isEmpty) {
+      messenger?.showSnackBar(const SnackBar(content: Text('Please enter make and model')));
+      return;
+    }
+
+    setState(() => _submitting = true);
+    final vm = modalContext.read<FleetViewModel>();
+    final err = await vm.addFleetVehicle(
+      registration: registration,
+      type: _type,
+      make: make,
+      model: model,
+      vin: vin.isEmpty ? null : vin,
+      currentMileageKm: mileageKm,
+    );
+    if (!modalContext.mounted) return;
+    setState(() => _submitting = false);
+
+    if (err != null) {
+      messenger?.showSnackBar(SnackBar(content: Text(err)));
+      return;
+    }
+
+    messenger?.showSnackBar(const SnackBar(content: Text('Vehicle added')));
+    Navigator.of(modalContext).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.88;
+
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: SizedBox(
+        height: maxHeight,
+        child: Material(
+          color: Colors.transparent,
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            child: DecoratedBox(
+              decoration: const BoxDecoration(color: _sheetBg, border: Border(top: BorderSide(color: _border))),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 5,
+                      decoration: BoxDecoration(color: const Color(0xFF333333), borderRadius: BorderRadius.circular(999)),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Add Vehicle',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: -0.2),
+                          ),
+                        ),
+                        Material(
+                          color: const Color(0xFF1A1A1A),
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => Navigator.of(context).pop(),
+                            child: const SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: Icon(Icons.close_rounded, color: Color(0xFF6B7280), size: 18),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFF1A1A1A)),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _labeledField('REGISTRATION', _registration, 'e.g. CA 456-789'),
+                          const SizedBox(height: 16),
+                          _labeledField('MAKE', _make, 'e.g. MAN, Volvo, Mercedes'),
+                          const SizedBox(height: 16),
+                          _labeledField('MODEL', _model, 'e.g. TGX 18.640'),
+                          const SizedBox(height: 16),
+                          Text(
+                            'VEHICLE TYPE',
+                            style:
+                                TextStyle(fontSize: 11, color: AppColors.textHint.withValues(alpha: 0.9), fontWeight: FontWeight.w600, letterSpacing: 2.2),
+                          ),
+                          const SizedBox(height: 8),
+                          InputDecorator(
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: _fieldBg,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _border)),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _border)),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _type,
+                                isDense: true,
+                                isExpanded: true,
+                                borderRadius: BorderRadius.circular(12),
+                                dropdownColor: const Color(0xFF1A1A1A),
+                                icon: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textMuted.withValues(alpha: 0.9)),
+                                style: const TextStyle(color: Colors.white, fontSize: 14),
+                                items: [
+                                  for (final t in _vehicleTypes) DropdownMenuItem<String>(value: t, child: Text(t)),
+                                ],
+                                onChanged: (v) {
+                                  if (v != null) {
+                                    setState(() => _type = v);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _labeledField('VIN NUMBER', _vin, '17-digit VIN'),
+                          const SizedBox(height: 16),
+                          _labeledField('CURRENT MILEAGE', _mileage, 'e.g. 245,000 km'),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFF1A1A1A)),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.paddingOf(context).bottom),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _submitting ? null : () => _submit(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.black,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: _submitting
+                            ? const SizedBox(
+                                height: 22,
+                                width: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.black),
+                              )
+                            : const Text('ADD VEHICLE', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 2.4)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -4406,16 +5267,17 @@ class _FleetVehiclesOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final vm = context.watch<FleetViewModel>();
     return Material(
-      color: Colors.black,
+      color: const Color(0xFF080808),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 12, 12),
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
+              decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF1A1A1A)))),
               child: Row(
                 children: [
-                  _fleetCircleBackButton(onPressed: vm.closeVehicles),
+                  _fleetFleetHeaderBackSquare(onPressed: vm.closeVehicles),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
@@ -4424,29 +5286,95 @@ class _FleetVehiclesOverlay extends StatelessWidget {
                     ),
                   ),
                   TextButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Add vehicle (demo)')),
-                      );
-                    },
+                    onPressed: () => _showFleetAddVehicleSheet(context),
                     style: TextButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.black,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: const Text(
-                      '+ ADD',
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Text('+', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, height: 1)),
+                        SizedBox(width: 6),
+                        Text('Add', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.6)),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                children: vm.vehicles.map((v) => _FleetVehicleListCard(vehicle: v, onTap: () => vm.selectVehicle(v))).toList(),
+              child: RefreshIndicator(
+                color: AppColors.primary,
+                onRefresh: vm.loadFleetVehicles,
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    if (vm.fleetVehiclesError != null)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                          child: Material(
+                            color: AppColors.red.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    vm.fleetVehiclesError!,
+                                    style: TextStyle(color: AppColors.red.withValues(alpha: 0.95), fontSize: 11, height: 1.35),
+                                  ),
+                                  TextButton(
+                                    onPressed: vm.fleetVehiclesLoading ? null : vm.loadFleetVehicles,
+                                    child: const Text('Retry'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (vm.fleetVehiclesLoading && vm.vehicles.isEmpty)
+                      const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                      )
+                    else if (!vm.fleetVehiclesLoading && vm.vehicles.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(28),
+                            child: Text(
+                              vm.fleetVehiclesError != null ? 'Could not load vehicles' : 'No vehicles yet',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 13),
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, i) {
+                              final v = vm.vehicles[i];
+                              return Padding(
+                                padding: EdgeInsets.only(bottom: i == vm.vehicles.length - 1 ? 0 : 12),
+                                child: _FleetVehicleListCard(vehicle: v, onTap: () => vm.selectVehicle(v)),
+                              );
+                            },
+                            childCount: vm.vehicles.length,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -4466,19 +5394,20 @@ class _FleetVehicleListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final badge = vehicle.categoryBadge ?? (vehicle.type != null ? vehicle.type!.toUpperCase() : 'VEHICLE');
     final last = vehicle.lastService ?? '—';
+    final subtitle = vehicle.label.trim().isEmpty ? '—' : vehicle.label.trim();
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: const Color(0xFF121212),
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFF0F0F0F),
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: const Color(0xFF2A2A2A)),
             ),
             child: Column(
@@ -4488,45 +5417,47 @@ class _FleetVehicleListCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(
-                        vehicle.plate,
-                        style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900, letterSpacing: -0.2),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            vehicle.plate,
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.2),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle,
+                            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12, fontWeight: FontWeight.w500),
+                          ),
+                        ],
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.65)),
+                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.32)),
                       ),
                       child: Text(
                         badge,
-                        style: const TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.8,
-                        ),
+                        style: const TextStyle(color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.85),
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  vehicle.label,
-                  style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 13, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
+                    const Text(
                       'Last Service',
-                      style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.85), fontSize: 11, fontWeight: FontWeight.w500),
+                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 11, fontWeight: FontWeight.w600),
                     ),
                     Text(
                       last,
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                      style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -4553,9 +5484,11 @@ class _FleetPaymentOverlay extends StatefulWidget {
 }
 
 class _FleetPaymentOverlayState extends State<_FleetPaymentOverlay> {
-  late List<_FleetPayCardRow> _cards;
-  int _defaultIndex = 0;
+  final List<_FleetPayCardRow> _localCards = [];
+  int _localDefaultIndex = 0;
   bool _showAddCard = false;
+  /// While non-null, the API-backed row with this method id shows a busy state.
+  String? _apiPaymentBusyId;
 
   final _addCardFormKey = GlobalKey<FormState>();
   late final TextEditingController _addCardNumber;
@@ -4569,10 +5502,6 @@ class _FleetPaymentOverlayState extends State<_FleetPaymentOverlay> {
   @override
   void initState() {
     super.initState();
-    _cards = [
-      _FleetPayCardRow(brand: 'Visa', last4: '4242', expiry: '12/26'),
-      _FleetPayCardRow(brand: 'Mastercard', last4: '8888', expiry: '09/27'),
-    ];
     _addCardNumber = TextEditingController();
     _addExpiry = TextEditingController();
     _addCvc = TextEditingController();
@@ -4656,8 +5585,8 @@ class _FleetPaymentOverlayState extends State<_FleetPaymentOverlay> {
     final brand = _inferCardBrand(digits);
     final expiry = _addExpiry.text.trim();
     setState(() {
-      _cards.add(_FleetPayCardRow(brand: brand, last4: last4, expiry: expiry));
-      if (_cards.length == 1) _defaultIndex = 0;
+      _localCards.add(_FleetPayCardRow(brand: brand, last4: last4, expiry: expiry));
+      if (_localCards.length == 1) _localDefaultIndex = 0;
       _showAddCard = false;
     });
     _addCardNumber.clear();
@@ -4668,17 +5597,49 @@ class _FleetPaymentOverlayState extends State<_FleetPaymentOverlay> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Card saved')));
   }
 
-  void _removeAt(int i) {
+  void _removeLocalAt(int i) {
     setState(() {
-      _cards.removeAt(i);
-      if (_cards.isEmpty) {
-        _defaultIndex = 0;
-      } else if (_defaultIndex >= _cards.length) {
-        _defaultIndex = _cards.length - 1;
-      } else if (i < _defaultIndex) {
-        _defaultIndex--;
+      _localCards.removeAt(i);
+      if (_localCards.isEmpty) {
+        _localDefaultIndex = 0;
+      } else if (_localDefaultIndex >= _localCards.length) {
+        _localDefaultIndex = _localCards.length - 1;
+      } else if (i < _localDefaultIndex) {
+        _localDefaultIndex--;
       }
     });
+  }
+
+  Future<void> _onApiPaymentSetDefault(BuildContext ctx, FleetViewModel vm, String methodId) async {
+    final id = methodId.trim();
+    if (id.isEmpty || _apiPaymentBusyId != null) return;
+    setState(() => _apiPaymentBusyId = id);
+    try {
+      await vm.setDefaultBillingPaymentMethod(id);
+      if (!ctx.mounted) return;
+      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Default payment method updated')));
+    } catch (e) {
+      if (!ctx.mounted) return;
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _apiPaymentBusyId = null);
+    }
+  }
+
+  Future<void> _onApiPaymentRemove(BuildContext ctx, FleetViewModel vm, String methodId) async {
+    final id = methodId.trim();
+    if (id.isEmpty || _apiPaymentBusyId != null) return;
+    setState(() => _apiPaymentBusyId = id);
+    try {
+      await vm.deleteBillingPaymentMethod(id);
+      if (!ctx.mounted) return;
+      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Payment method removed')));
+    } catch (e) {
+      if (!ctx.mounted) return;
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _apiPaymentBusyId = null);
+    }
   }
 
   @override
@@ -4694,6 +5655,116 @@ class _FleetPaymentOverlayState extends State<_FleetPaymentOverlay> {
   }
 
   Widget _buildPaymentListScreen(FleetViewModel vm) {
+    final api = vm.billingPaymentMethods;
+    final loading = vm.billingPaymentMethodsLoading;
+    final err = vm.billingPaymentMethodsError;
+    final apiHasDefault = api.any((m) => m.isDefault);
+
+    final listTiles = <Widget>[
+      if (err != null && err.trim().isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.red.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.red.withValues(alpha: 0.25)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  err,
+                  style: TextStyle(color: AppColors.red.withValues(alpha: 0.95), fontSize: 12, height: 1.35),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => vm.loadBillingPaymentMethods(),
+                  child: const Text('Retry', style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      if (loading && api.isEmpty && _localCards.isEmpty)
+        const Padding(
+          padding: EdgeInsets.only(top: 48),
+          child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+        )
+      else if (!loading && err == null && api.isEmpty && _localCards.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 24, bottom: 8),
+          child: Text(
+            'No saved payment methods yet. Add one below.',
+            style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 13),
+          ),
+        ),
+      ...api.map((m) {
+        final row = _FleetPayCardRow(brand: m.displayBrand, last4: m.last4, expiry: m.expiryLabel);
+        final busy = _apiPaymentBusyId == m.id;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _FleetPaymentCardTile(
+            row: row,
+            isDefault: m.isDefault,
+            busy: busy,
+            onSetDefault: m.isDefault
+                ? null
+                : () => _onApiPaymentSetDefault(context, vm, m.id),
+            onRemove: () => _onApiPaymentRemove(context, vm, m.id),
+          ),
+        );
+      }),
+      for (var j = 0; j < _localCards.length; j++) ...[
+        _FleetPaymentCardTile(
+          row: _localCards[j],
+          isDefault: !apiHasDefault && j == _localDefaultIndex,
+          onSetDefault:
+              apiHasDefault || _localCards.length <= 1 || j == _localDefaultIndex ? null : () => setState(() => _localDefaultIndex = j),
+          onRemove: () => _removeLocalAt(j),
+        ),
+        const SizedBox(height: 12),
+      ],
+      Material(
+        color: const Color(0xFF121212),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => setState(() => _showAddCard = true),
+          borderRadius: BorderRadius.circular(12),
+          child: CustomPaint(
+            painter: _FleetDashedBorderPainter(
+              color: const Color(0xFF4B5563),
+              strokeWidth: 1.5,
+              radius: 12,
+            ),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 22),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.add_rounded, color: AppColors.textMuted, size: 22),
+                  const SizedBox(width: 8),
+                  Text(
+                    'ADD NEW CARD',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -4713,54 +5784,7 @@ class _FleetPaymentOverlayState extends State<_FleetPaymentOverlay> {
         Expanded(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            children: [
-              for (var i = 0; i < _cards.length; i++) ...[
-                _FleetPaymentCardTile(
-                  row: _cards[i],
-                  isDefault: i == _defaultIndex,
-                  onSetDefault: _cards.length > 1 && i != _defaultIndex ? () => setState(() => _defaultIndex = i) : null,
-                  onRemove: () => _removeAt(i),
-                ),
-                const SizedBox(height: 12),
-              ],
-              Material(
-                color: const Color(0xFF121212),
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  onTap: () => setState(() => _showAddCard = true),
-                  borderRadius: BorderRadius.circular(12),
-                  child: CustomPaint(
-                    painter: _FleetDashedBorderPainter(
-                      color: const Color(0xFF4B5563),
-                      strokeWidth: 1.5,
-                      radius: 12,
-                    ),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 22),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.add_rounded, color: AppColors.textMuted, size: 22),
-                          const SizedBox(width: 8),
-                          Text(
-                            'ADD NEW CARD',
-                            style: TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            children: listTiles,
           ),
         ),
       ],
@@ -4997,12 +6021,14 @@ class _FleetPaymentCardTile extends StatelessWidget {
     required this.isDefault,
     required this.onRemove,
     this.onSetDefault,
+    this.busy = false,
   });
 
   final _FleetPayCardRow row;
   final bool isDefault;
   final VoidCallback onRemove;
   final VoidCallback? onSetDefault;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -5060,17 +6086,23 @@ class _FleetPaymentCardTile extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: TextButton(
-                      onPressed: onRemove,
+                      onPressed: busy ? null : onRemove,
                       style: TextButton.styleFrom(
                         backgroundColor: AppColors.red.withValues(alpha: 0.18),
                         foregroundColor: AppColors.red,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      child: const Text(
-                        'REMOVE',
-                        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.8),
-                      ),
+                      child: busy
+                          ? SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.red.withValues(alpha: 0.9)),
+                            )
+                          : const Text(
+                              'REMOVE',
+                              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.8),
+                            ),
                     ),
                   )
                 else
@@ -5078,36 +6110,52 @@ class _FleetPaymentCardTile extends StatelessWidget {
                     children: [
                       Expanded(
                         child: TextButton(
-                          onPressed: onSetDefault,
+                          onPressed: busy ? null : onSetDefault,
                           style: TextButton.styleFrom(
                             backgroundColor: const Color(0xFF1A1A1A),
                             foregroundColor: Colors.white,
+                            disabledBackgroundColor: const Color(0xFF1A1A1A),
+                            disabledForegroundColor: Colors.white54,
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                               side: const BorderSide(color: Color(0xFF2A2A2A)),
                             ),
                           ),
-                          child: const Text(
-                            'SET DEFAULT',
-                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.6),
-                          ),
+                          child: busy
+                              ? SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.primary),
+                                )
+                              : const Text(
+                                  'SET DEFAULT',
+                                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.6),
+                                ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: TextButton(
-                          onPressed: onRemove,
+                          onPressed: busy ? null : onRemove,
                           style: TextButton.styleFrom(
                             backgroundColor: AppColors.red.withValues(alpha: 0.18),
                             foregroundColor: AppColors.red,
+                            disabledBackgroundColor: AppColors.red.withValues(alpha: 0.12),
+                            disabledForegroundColor: AppColors.red.withValues(alpha: 0.5),
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
-                          child: const Text(
-                            'REMOVE',
-                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.6),
-                          ),
+                          child: busy
+                              ? SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.red.withValues(alpha: 0.9)),
+                                )
+                              : const Text(
+                                  'REMOVE',
+                                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.6),
+                                ),
                         ),
                       ),
                     ],
@@ -5151,6 +6199,9 @@ class _FleetHelpOverlayState extends State<_FleetHelpOverlay> {
   String? _category;
   final _message = TextEditingController();
   bool _sent = false;
+  bool _submitting = false;
+
+  final _supportApi = SupportApiService();
 
   static const _categories = <(String id, String label, IconData icon)>[
     ('job', 'Job / Booking', Icons.bolt_rounded),
@@ -5159,6 +6210,53 @@ class _FleetHelpOverlayState extends State<_FleetHelpOverlay> {
     ('mechanic', 'Mechanic Issue', Icons.build_rounded),
     ('other', 'Other', Icons.help_outline_rounded),
   ];
+
+  String _senderLine(Session? session) {
+    final e = session?.email.trim();
+    final email = e == null || e.isEmpty ? 'your registered email' : e;
+    final roleSuffix = session?.role == UserRole.company ? 'Company' : 'Fleet Operator';
+    return 'Sent from: $email · $roleSuffix';
+  }
+
+  String _subjectForCategory(String id) {
+    for (final c in _categories) {
+      if (c.$1 == id) return c.$2;
+    }
+    return id;
+  }
+
+  Future<void> _submit() async {
+    if (_category == null || _message.text.trim().isEmpty || _submitting) return;
+    final token = context.read<AuthViewModel>().session?.accessToken;
+    final messenger = ScaffoldMessenger.of(context);
+    if (token == null || token.trim().isEmpty) {
+      messenger.showSnackBar(const SnackBar(content: Text('Please sign in again to send support messages.')));
+      return;
+    }
+    final subjectLabel = _subjectForCategory(_category!);
+    setState(() => _submitting = true);
+    try {
+      await _supportApi.createTicket(
+        accessToken: token,
+        subject: subjectLabel,
+        message: _message.text.trim(),
+        category: supportTicketCategoryEnum(_category!),
+      );
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _sent = true;
+      });
+    } on SupportApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      messenger.showSnackBar(const SnackBar(content: Text('Could not send message. Please try again.')));
+    }
+  }
 
   @override
   void dispose() {
@@ -5169,6 +6267,7 @@ class _FleetHelpOverlayState extends State<_FleetHelpOverlay> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<FleetViewModel>();
+    final authSession = context.watch<AuthViewModel>().session;
 
     if (_sent) {
       return Material(
@@ -5401,7 +6500,7 @@ class _FleetHelpOverlayState extends State<_FleetHelpOverlay> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Sent from: john@logistix.co.za · Fleet Operator',
+                                _senderLine(authSession),
                                 style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.75), fontSize: 10),
                               ),
                             ],
@@ -5418,15 +6517,25 @@ class _FleetHelpOverlayState extends State<_FleetHelpOverlay> {
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton.icon(
-                                onPressed: canSend
-                                    ? () => setState(() {
-                                          _sent = true;
-                                        })
-                                    : null,
-                                icon: const Icon(Icons.send_rounded, size: 18),
-                                label: const Text(
+                                onPressed: (canSend && !_submitting) ? _submit : null,
+                                icon: _submitting
+                                    ? SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.black.withValues(alpha: 0.7),
+                                        ),
+                                      )
+                                    : Icon(Icons.send_rounded, size: 18, color: (canSend && !_submitting) ? Colors.black : Colors.black.withValues(alpha: 0.35)),
+                                label: Text(
                                   'SEND MESSAGE',
-                                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.8),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 12,
+                                    letterSpacing: 0.8,
+                                    color: (canSend && !_submitting) ? Colors.black : Colors.black.withValues(alpha: 0.35),
+                                  ),
                                 ),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppColors.primary,

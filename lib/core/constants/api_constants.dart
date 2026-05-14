@@ -17,7 +17,17 @@ abstract final class ApiConstants {
 
   static const String usersMeAvailabilityPath = '/api/v1/users/me/availability';
   static const String usersMePath = '/api/v1/users/me';
+  static const String supportTicketsPath = '/api/v1/support/tickets';
   static const String jobsPath = '/api/v1/jobs';
+
+  /// Fleet submits mechanic review: `POST /api/v1/fleet/reviews`
+  static const String fleetReviewsPath = '/api/v1/fleet/reviews';
+
+  /// Fleet vehicle list (`GET`) for My Fleet overlay.
+  static const String fleetVehiclesPath = '/api/v1/fleet/vehicles';
+
+  /// Fleet billing: saved cards & bank methods.
+  static const String billingPaymentMethodsPath = '/api/v1/billing/payment-methods';
 
   /// Google Maps / Places / Geocoding (restrict in Cloud Console for production).
   static const String googleMapsApiKey =

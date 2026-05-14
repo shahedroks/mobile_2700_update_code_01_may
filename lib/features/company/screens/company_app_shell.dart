@@ -1285,14 +1285,70 @@ class _CompanyJobFeedViewState extends State<_CompanyJobFeedView> {
   }
 }
 
-class _CoQuoteSubmitSheet extends StatelessWidget {
+class _CoQuoteSubmitSheet extends StatefulWidget {
   const _CoQuoteSubmitSheet({required this.job, required this.onClose});
 
   final CompanyFeedJob job;
   final VoidCallback onClose;
 
+  @override
+  State<_CoQuoteSubmitSheet> createState() => _CoQuoteSubmitSheetState();
+}
+
+class _CoQuoteSubmitSheetState extends State<_CoQuoteSubmitSheet> {
   static const Color _sheetBg = Color(0xFF0F0F0F);
   static const Color _fieldBg = Color(0xFF1A1A1A);
+
+  final _amountCtrl = TextEditingController();
+  final _etaCtrl = TextEditingController(text: '30');
+  final _notesCtrl = TextEditingController();
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    _etaCtrl.dispose();
+    _notesCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final amountParsed = double.tryParse(_amountCtrl.text.replaceAll(',', '').trim());
+    if (amountParsed == null || amountParsed <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid quote amount')));
+      return;
+    }
+    final etaParsed = int.tryParse(_etaCtrl.text.trim());
+    if (etaParsed == null || etaParsed < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter estimated arrival (minutes)')));
+      return;
+    }
+    if (widget.job.jobBackendId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Missing job id — cannot submit quote')));
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() => _submitting = true);
+    try {
+      final vm = context.read<CompanyViewModel>();
+      final message = await vm.submitFeedJobQuote(
+        jobBackendId: widget.job.jobBackendId,
+        amount: amountParsed,
+        etaMinutes: etaParsed,
+        notes: _notesCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message ?? 'Quote submitted')));
+      widget.onClose();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1324,14 +1380,14 @@ class _CoQuoteSubmitSheet extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${job.jobCode} · ${job.vehicleLine}',
+                            '${widget.job.jobCode} · ${widget.job.vehicleLine}',
                             style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                           ),
                         ],
                       ),
                     ),
                     IconButton(
-                      onPressed: onClose,
+                      onPressed: _submitting ? null : widget.onClose,
                       icon: Icon(Icons.close_rounded, color: AppColors.textMuted.withValues(alpha: 0.9)),
                     ),
                   ],
@@ -1353,7 +1409,7 @@ class _CoQuoteSubmitSheet extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(job.subtitleLine,
+                          Text(widget.job.subtitleLine,
                               style:
                                   const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 10),
@@ -1364,7 +1420,7 @@ class _CoQuoteSubmitSheet extends StatelessWidget {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  '${job.locationAddress} · ${job.distanceMilesDisplay()}',
+                                  '${widget.job.locationAddress} · ${widget.job.distanceMilesDisplay()}',
                                   style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                                 ),
                               ),
@@ -1376,8 +1432,8 @@ class _CoQuoteSubmitSheet extends StatelessWidget {
                               Icon(Icons.schedule_rounded, size: 16, color: AppColors.textMuted),
                               const SizedBox(width: 8),
                               Text(
-                                job.postedAgoLabel.isNotEmpty
-                                    ? 'Posted ${job.postedAgoLabel}'
+                                widget.job.postedAgoLabel.isNotEmpty
+                                    ? 'Posted ${widget.job.postedAgoLabel}'
                                     : 'Posted —',
                                 style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                               ),
@@ -1393,7 +1449,9 @@ class _CoQuoteSubmitSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     TextField(
-                      keyboardType: TextInputType.number,
+                      controller: _amountCtrl,
+                      enabled: !_submitting,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
                       decoration: InputDecoration(
                         filled: true,
@@ -1418,6 +1476,8 @@ class _CoQuoteSubmitSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     TextField(
+                      controller: _etaCtrl,
+                      enabled: !_submitting,
                       keyboardType: TextInputType.number,
                       style: const TextStyle(color: Colors.white, fontSize: 14),
                       decoration: InputDecoration(
@@ -1441,6 +1501,8 @@ class _CoQuoteSubmitSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     TextField(
+                      controller: _notesCtrl,
+                      enabled: !_submitting,
                       maxLines: 3,
                       style: const TextStyle(color: Colors.white, fontSize: 13),
                       decoration: InputDecoration(
@@ -1459,14 +1521,21 @@ class _CoQuoteSubmitSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
                     FilledButton(
-                      onPressed: onClose,
+                      onPressed: _submitting ? null : _submit,
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: Colors.black,
+                        disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.35),
                         minimumSize: const Size(double.infinity, 48),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      child: const Text('Submit Quote', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+                      child: _submitting
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                            )
+                          : const Text('Submit Quote', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
                     ),
                   ],
                 ),

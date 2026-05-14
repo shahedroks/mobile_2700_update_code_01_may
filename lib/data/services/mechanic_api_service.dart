@@ -37,6 +37,19 @@ class MechanicApiService {
     return _decodeOrThrow(res, defaultMessage: 'Failed to update availability');
   }
 
+  /// Current user (`GET /api/v1/users/me`) — mechanic fleet profile, preferences, payout, etc.
+  Future<Map<String, dynamic>> fetchMe({required String accessToken}) async {
+    final uri = Uri.parse('$_baseUrl${ApiConstants.usersMePath}');
+    final res = await _client.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+    return _decodeOrThrow(res, defaultMessage: 'Failed to load profile');
+  }
+
   /// Job feed for mechanic: `GET /api/v1/jobs?feed=true&lat=&lng=&radiusMiles=`
   Future<Map<String, dynamic>> fetchJobFeed({
     required String accessToken,
@@ -79,6 +92,42 @@ class MechanicApiService {
       },
     );
     return _decodeOrThrow(res, defaultMessage: 'Failed to fetch earnings summary');
+  }
+
+  /// Completed earning job rows for mechanic: `GET /api/v1/earnings/jobs`
+  Future<Map<String, dynamic>> fetchEarningsJobs({
+    required String accessToken,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/v1/earnings/jobs').replace(
+      queryParameters: {'page': '$page', 'limit': '$limit'},
+    );
+    final res = await _client.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+    return _decodeOrThrow(res, defaultMessage: 'Failed to fetch earnings jobs');
+  }
+
+  /// Authenticated GET for paths from earning rows (`primaryAction.path`), e.g. invoice download/detail.
+  Future<Map<String, dynamic>> fetchMechanicAuthorizedGet({
+    required String accessToken,
+    required String path,
+  }) async {
+    final rel = path.trim().startsWith('/') ? path.trim() : '/${path.trim()}';
+    final uri = Uri.parse('$_baseUrl$rel');
+    final res = await _client.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+    return _decodeOrThrow(res, defaultMessage: 'Request failed');
   }
 
   /// Active jobs for this mechanic: `GET /api/v1/jobs?tab=active&page=:page&limit=:limit`

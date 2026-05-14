@@ -5,10 +5,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/app_assets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/job_offer.dart';
+import '../../../data/models/mechanic_me_profile.dart';
 import '../../../data/repositories/app_repository.dart';
 import '../../../routes/app_routes.dart';
 import '../../../widgets/truckfix_map_preview.dart';
@@ -16,6 +18,7 @@ import '../../auth/viewmodel/auth_viewmodel.dart';
 import '../../categories/job_taxonomy.dart';
 import '../viewmodel/mechanic_viewmodel.dart';
 import '../../../data/services/mechanic_api_service.dart';
+import '../../../data/services/support_api_service.dart';
 
 class MechanicAppShell extends StatelessWidget {
   const MechanicAppShell({super.key});
@@ -128,11 +131,56 @@ class _HelpSupportSheetState extends State<_HelpSupportSheet> {
   String? _categoryId;
   final _messageCtrl = TextEditingController();
   bool _sent = false;
+  bool _submitting = false;
 
-  static const _fromEmail = 'james@truckfix.co.uk';
-  static const _roleLabel = 'Mechanic';
+  final _supportApi = SupportApiService();
 
   bool get _canSend => _categoryId != null && _messageCtrl.text.trim().isNotEmpty;
+
+  String _senderLine(String? email) {
+    final e = email == null || email.trim().isEmpty ? 'your registered email' : email.trim();
+    return 'Sent from: $e · Mechanic';
+  }
+
+  String _subjectForCategory(String id) {
+    for (final c in _categories) {
+      if (c.id == id) return c.label;
+    }
+    return id;
+  }
+
+  Future<void> _submit() async {
+    if (!_canSend || _submitting || _categoryId == null) return;
+    final token = context.read<AuthViewModel>().session?.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please sign in again to send support messages.')));
+      return;
+    }
+    final subjectLabel = _subjectForCategory(_categoryId!);
+    setState(() => _submitting = true);
+    try {
+      await _supportApi.createTicket(
+        accessToken: token,
+        subject: subjectLabel,
+        message: _messageCtrl.text.trim(),
+        category: supportTicketCategoryEnum(_categoryId!),
+      );
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _sent = true;
+      });
+    } on SupportApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not send message. Please try again.')));
+    }
+  }
 
   @override
   void dispose() {
@@ -142,6 +190,7 @@ class _HelpSupportSheetState extends State<_HelpSupportSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final sessionEmail = context.watch<AuthViewModel>().session?.email;
     final maxH = MediaQuery.sizeOf(context).height * 0.88;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
@@ -369,7 +418,7 @@ class _HelpSupportSheetState extends State<_HelpSupportSheet> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Sent from: $_fromEmail · $_roleLabel',
+                          _senderLine(sessionEmail),
                           style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.85), fontSize: 10),
                         ),
                       ],
@@ -387,15 +436,24 @@ class _HelpSupportSheetState extends State<_HelpSupportSheet> {
                         width: double.infinity,
                         height: 48,
                         child: ElevatedButton.icon(
-                          onPressed: _canSend ? () => setState(() => _sent = true) : null,
-                          icon: Icon(Icons.send_rounded, size: 18, color: _canSend ? Colors.black : Colors.black.withValues(alpha: 0.35)),
+                          onPressed: (_canSend && !_submitting) ? _submit : null,
+                          icon: _submitting
+                              ? SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.black.withValues(alpha: 0.7),
+                                  ),
+                                )
+                              : Icon(Icons.send_rounded, size: 18, color: (_canSend && !_submitting) ? Colors.black : Colors.black.withValues(alpha: 0.35)),
                           label: Text(
                             'SEND MESSAGE',
                             style: TextStyle(
                               fontWeight: FontWeight.w900,
                               letterSpacing: 2,
                               fontSize: 12,
-                              color: _canSend ? Colors.black : Colors.black.withValues(alpha: 0.35),
+                              color: (_canSend && !_submitting) ? Colors.black : Colors.black.withValues(alpha: 0.35),
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
@@ -1317,26 +1375,6 @@ class _MyQuotesState extends State<_MyQuotes> {
                                 child: Text(
                                   q.summaryLine!,
                                   style: const TextStyle(color: AppColors.green, fontSize: 10, fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                            ],
-                            // Resubmit action for expired / declined quotes
-                            if (q.canResubmit) ...[
-                              const SizedBox(height: 10),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton(
-                                  onPressed: () {/* TODO: resubmit flow */},
-                                  style: OutlinedButton.styleFrom(
-                                    side: BorderSide(color: AppColors.primary.withValues(alpha: 0.50)),
-                                    foregroundColor: AppColors.primary,
-                                    padding: const EdgeInsets.symmetric(vertical: 9),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  ),
-                                  child: const Text(
-                                    'Resubmit Quote',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                                  ),
                                 ),
                               ),
                             ],
@@ -3908,28 +3946,28 @@ class _TimelineNode extends StatelessWidget {
   }
 }
 
-class _EarnJob {
-  const _EarnJob({
-    required this.id,
-    required this.truck,
-    required this.issue,
-    required this.fleet,
-    required this.date,
-    required this.gross,
-    required this.net,
-    required this.rating,
-    required this.hours,
-  });
+String _mechEarnPctLabel(double pct) => pct == pct.roundToDouble() ? '${pct.round()}' : pct.toStringAsFixed(1);
 
-  final String id;
-  final String truck;
-  final String issue;
-  final String fleet;
-  final String date;
-  final int gross;
-  final int net;
-  final int rating;
-  final String hours;
+String _mechEarnMoneyAbs(double amount, String currency) {
+  final cur = currency.toUpperCase().trim().isEmpty ? 'GBP' : currency.trim().toUpperCase();
+  if (cur == 'GBP') {
+    if (amount == amount.roundToDouble()) return '£${amount.round()}';
+    return '£${amount.toStringAsFixed(2)}';
+  }
+  if (amount == amount.roundToDouble()) return '$cur ${amount.round()}';
+  return '$cur ${amount.toStringAsFixed(2)}';
+}
+
+String _mechEarnNegativeMoney(double fee, String currency) {
+  if (fee == 0) return _mechEarnMoneyAbs(0, currency);
+  return '-${_mechEarnMoneyAbs(fee, currency)}'.replaceFirst('--', '-');
+}
+
+Map<String, dynamic>? _mechEarningUnwrapEnvelope(Map<String, dynamic>? raw) {
+  if (raw == null) return null;
+  final d = raw['data'];
+  if (d is Map<String, dynamic>) return d;
+  return raw;
 }
 
 class _MechanicEarnings extends StatefulWidget {
@@ -3942,21 +3980,13 @@ class _MechanicEarnings extends StatefulWidget {
 }
 
 class _MechanicEarningsState extends State<_MechanicEarnings> {
-  // Completed jobs list remains demo until a dedicated jobs-history API is added.
-  static const _jobs = <_EarnJob>[
-    _EarnJob(id: 'TF-8810', truck: 'Rigid 8T · GP 221-560', issue: 'Fuel system fault', fleet: 'Logistix Transport', date: '7 Mar 2026', gross: 185, net: 163, rating: 5, hours: '1h 45m'),
-    _EarnJob(id: 'TF-8797', truck: 'Flatbed · WC 334-112', issue: 'Tyre replacement x2', fleet: 'Peak Haulage Ltd', date: '5 Mar 2026', gross: 140, net: 123, rating: 5, hours: '55m'),
-    _EarnJob(id: 'TF-8782', truck: 'Tautliner · CA 100-221', issue: 'Air brake adjustment', fleet: 'Swift Freight', date: '3 Mar 2026', gross: 220, net: 194, rating: 4, hours: '2h 10m'),
-    _EarnJob(id: 'TF-8771', truck: 'Tanker · KZN 44-310', issue: 'Coolant system flush', fleet: 'Bulk Trans UK', date: '28 Feb 2026', gross: 165, net: 145, rating: 5, hours: '1h 20m'),
-    _EarnJob(id: 'TF-8760', truck: 'Rigid 18T · WC 887-002', issue: 'Engine diagnostics', fleet: 'Logistix Transport', date: '25 Feb 2026', gross: 95, net: 84, rating: 4, hours: '40m'),
-    _EarnJob(id: 'TF-8744', truck: 'Flatbed · GP 551-889', issue: 'Suspension repair', fleet: 'Peak Haulage Ltd', date: '21 Feb 2026', gross: 310, net: 273, rating: 5, hours: '3h 05m'),
-  ];
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MechanicViewModel>().loadEarnings();
+      final vm = context.read<MechanicViewModel>();
+      vm.loadEarnings();
+      vm.loadEarningsJobs();
     });
   }
 
@@ -4080,8 +4110,7 @@ class _MechanicEarningsState extends State<_MechanicEarnings> {
     );
   }
 
-  Widget _jobCard(_EarnJob job) {
-    final fee = job.gross - job.net;
+  Widget _jobCard(BuildContext context, MechanicViewModel vm, MechanicCompletedEarningJob job) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -4103,22 +4132,34 @@ class _MechanicEarningsState extends State<_MechanicEarnings> {
                     children: [
                       Row(
                         children: [
-                          Text(job.id, style: const TextStyle(color: AppColors.textMuted, fontSize: 10, fontFamily: 'monospace')),
+                          Text(
+                            job.jobCode.isNotEmpty ? job.jobCode : '—',
+                            style: const TextStyle(color: AppColors.textMuted, fontSize: 10, fontFamily: 'monospace'),
+                          ),
                           Text(' · ', style: TextStyle(color: AppColors.textHint.withValues(alpha: 0.8), fontSize: 10)),
-                          Text(job.date, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10)),
+                          Text(job.dateLabel, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10)),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(job.truck, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text(
+                        job.vehicleLine.isNotEmpty ? job.vehicleLine : '—',
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
                       const SizedBox(height: 2),
-                      Text(job.issue, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11)),
+                      Text(
+                        job.issueLine.isNotEmpty ? job.issueLine : '—',
+                        style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11),
+                      ),
                     ],
                   ),
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('£${job.net}', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w900, fontSize: 15)),
+                    Text(
+                      job.netEarnedDisplay,
+                      style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w900, fontSize: 15),
+                    ),
                     const Text('net earned', style: TextStyle(color: AppColors.textMuted, fontSize: 9)),
                   ],
                 ),
@@ -4136,7 +4177,7 @@ class _MechanicEarningsState extends State<_MechanicEarnings> {
                 Text(' · ', style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.7), fontSize: 10)),
                 Expanded(
                   child: Text(
-                    job.fleet,
+                    job.customerName.isNotEmpty ? job.customerName : '—',
                     style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -4144,7 +4185,10 @@ class _MechanicEarningsState extends State<_MechanicEarnings> {
                 Text(' · ', style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.7), fontSize: 10)),
                 const Icon(Icons.access_time_rounded, size: 12, color: AppColors.textMuted),
                 const SizedBox(width: 2),
-                Text(job.hours, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10)),
+                Text(
+                  job.durationLabel.isNotEmpty ? job.durationLabel : '—',
+                  style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10),
+                ),
               ],
             ),
             const Padding(
@@ -4156,7 +4200,7 @@ class _MechanicEarningsState extends State<_MechanicEarnings> {
               color: AppColors.card2,
               borderRadius: BorderRadius.circular(12),
               child: InkWell(
-                onTap: () => _showInvoiceSheet(job, fee),
+                onTap: () => _showInvoiceSheet(context, vm, job),
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
                   decoration: BoxDecoration(
@@ -4170,15 +4214,18 @@ class _MechanicEarningsState extends State<_MechanicEarnings> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('Gross', style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
-                          Text('£${job.gross}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+                          Text(job.grossDisplay, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Fee (12%)', style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
-                          Text('-£$fee', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10)),
+                          Text(
+                            'Fee (${job.platformFeePercent}%)',
+                            style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+                          ),
+                          Text(job.feeDisplay, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10)),
                         ],
                       ),
                       const Padding(
@@ -4190,7 +4237,7 @@ class _MechanicEarningsState extends State<_MechanicEarnings> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('Net', style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w900)),
-                          Text('£${job.net}', style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w900)),
+                          Text(job.netDisplay, style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w900)),
                         ],
                       ),
                       const Padding(
@@ -4220,69 +4267,188 @@ class _MechanicEarningsState extends State<_MechanicEarnings> {
     );
   }
 
-  void _showInvoiceSheet(_EarnJob job, int fee) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+  Widget _mechInvoiceKv(String k, String v) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 118, child: Text(k, style: TextStyle(color: AppColors.textMuted, fontSize: 11))),
+          Expanded(child: Text(v, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600))),
+        ],
       ),
-      builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(color: AppColors.border2, borderRadius: BorderRadius.circular(999)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text('INV-${job.id}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
-              Text(job.date, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
-              const SizedBox(height: 16),
-              Text(job.truck, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-              Text(job.issue, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-              const SizedBox(height: 16),
-              _sheetRow('Gross', '£${job.gross}'),
-              _sheetRow('Fee (12%)', '-£$fee'),
-              const Divider(color: AppColors.border),
-              _sheetRow('Net', '£${job.net}', highlight: true),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w900)),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
-  Widget _sheetRow(String k, String v, {bool highlight = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(k, style: TextStyle(color: highlight ? AppColors.primary : AppColors.textMuted, fontWeight: highlight ? FontWeight.w900 : FontWeight.w400, fontSize: 12)),
-          Text(v, style: TextStyle(color: highlight ? AppColors.primary : Colors.white, fontWeight: highlight ? FontWeight.w900 : FontWeight.w600, fontSize: 12)),
-        ],
+  Widget _mechInvoiceSheetBody(BuildContext context, MechanicCompletedEarningJob job, Map<String, dynamic> inv) {
+    String pickStr(String snake, [String camel = '']) {
+      final keys = camel.isEmpty ? <String>[snake] : <String>[snake, camel];
+      for (final k in keys) {
+        final raw = inv[k];
+        if (raw == null) continue;
+        final s = raw.toString().trim();
+        if (s.isNotEmpty) return s;
+      }
+      return '';
+    }
+
+    final invNoPick = pickStr('invoice_no', 'invoiceNo');
+    final invoiceNoLine = invNoPick.isNotEmpty ? invNoPick : job.invoiceNo.trim();
+
+    final statusPick = pickStr('status').trim();
+    final paidPick = pickStr('paid_at', 'paidAt');
+
+    final grossPickStr = pickStr('gross_amount', 'grossAmount');
+    final netPickStr = pickStr('net_amount', 'netAmount');
+    final curPick = pickStr('currency');
+    final cur = curPick.isEmpty ? job.currency : curPick;
+
+    final pdfInline = pickStr('pdf_url', 'pdfUrl');
+
+    final grossParsed = grossPickStr.isNotEmpty ? double.tryParse(grossPickStr) : null;
+    final netParsed = netPickStr.isNotEmpty ? double.tryParse(netPickStr) : null;
+
+    final rows = <Widget>[
+      if (job.jobCode.isNotEmpty) _mechInvoiceKv('Job code', job.jobCode),
+      if (invoiceNoLine.isNotEmpty) _mechInvoiceKv('Invoice #', invoiceNoLine),
+      if (statusPick.isNotEmpty) _mechInvoiceKv('Status', statusPick),
+      if (paidPick.isNotEmpty) _mechInvoiceKv('Paid', paidPick),
+      _mechInvoiceKv('Gross', _mechEarnMoneyAbs(grossParsed ?? job.grossAmount, cur)),
+      _mechInvoiceKv(
+        'Fee (${_mechEarnPctLabel(job.platformFeePercent.toDouble())}%)',
+        _mechEarnNegativeMoney(job.platformFeeAmount, cur),
       ),
+      _mechInvoiceKv('Net', _mechEarnMoneyAbs(netParsed ?? job.netAmount, cur)),
+    ];
+
+    if (pdfInline.trim().startsWith('http')) {
+      final url = pdfInline.trim();
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 14),
+          child: FilledButton.icon(
+            onPressed: () async {
+              final u = Uri.tryParse(url);
+              if (u != null && await canLaunchUrl(u)) {
+                await launchUrl(u, mode: LaunchMode.externalApplication);
+              }
+            },
+            icon: const Icon(Icons.picture_as_pdf_outlined, color: Colors.black, size: 20),
+            label: const Text('Open PDF', style: TextStyle(fontWeight: FontWeight.w900)),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.black,
+              minimumSize: const Size(double.infinity, 44),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+  }
+
+  void _showInvoiceSheet(BuildContext context, MechanicViewModel vm, MechanicCompletedEarningJob job) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final href = job.invoiceDownloadPath.trim();
+    if (href.isEmpty) {
+      messenger?.showSnackBar(const SnackBar(content: Text('No invoice link for this job.')));
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final bottom = MediaQuery.paddingOf(ctx).bottom;
+        return Padding(
+          padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + 12),
+          child: SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.56,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFF0F0F0F),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                border: Border(top: BorderSide(color: AppColors.border2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Invoice',
+                            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          icon: Icon(Icons.close_rounded, color: AppColors.textMuted.withValues(alpha: 0.9)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFF1A1A1A)),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottom),
+                      child: FutureBuilder<Map<String, dynamic>>(
+                        future: vm.fetchMechanicAuthorizedGet(href),
+                        builder: (_, snapshot) {
+                          if (snapshot.connectionState != ConnectionState.done) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 32),
+                              child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                            );
+                          }
+                          if (snapshot.hasError) {
+                            return Text(
+                              snapshot.error.toString(),
+                              style: TextStyle(color: AppColors.red.withValues(alpha: 0.9), fontSize: 13, height: 1.35),
+                            );
+                          }
+                          final envelope = snapshot.data!;
+                          final inv = _mechEarningUnwrapEnvelope(envelope) ?? envelope;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                job.vehicleLine,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(job.issueLine, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                              const SizedBox(height: 16),
+                              _mechInvoiceSheetBody(context, job, inv),
+                              const SizedBox(height: 20),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: Colors.black,
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  ),
+                                  child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w900)),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -4399,11 +4565,48 @@ class _MechanicEarningsState extends State<_MechanicEarnings> {
                         style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2),
                       ),
                     ),
-                    Text('${_jobs.length} jobs', style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
+                    Text(
+                      '${vm.earningsJobsMeta?.total ?? vm.earningsJobs.length} jobs',
+                      style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
-                ..._jobs.map(_jobCard),
+                if (vm.earningsJobsLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2)),
+                  )
+                else if (vm.earningsJobsError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: AppColors.textMuted, size: 14),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            vm.earningsJobsError!,
+                            style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: vm.loadEarningsJobs,
+                          child: const Text('Retry', style: TextStyle(color: AppColors.primary, fontSize: 11)),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (vm.earningsJobs.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Text(
+                      'No completed jobs yet.',
+                      style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.9), fontSize: 12),
+                    ),
+                  )
+                else
+                  ...vm.earningsJobs.map((j) => _jobCard(context, vm, j)),
               ],
             ),
           ),
@@ -5450,7 +5653,11 @@ class _MechanicProfile extends StatefulWidget {
 }
 
 class _MechanicProfileState extends State<_MechanicProfile> {
-  bool _notifEnabled = true;
+  late final MechanicViewModel _vm;
+  late final VoidCallback _vmListen;
+  MechanicMeProfile? _syncedFromProfile;
+
+  bool _pushEnabled = true;
   int _notifRadius = 25;
   bool _notifNewJobs = true;
   bool _notifJobUpdates = true;
@@ -5458,8 +5665,71 @@ class _MechanicProfileState extends State<_MechanicProfile> {
   bool _notifSystem = false;
 
   @override
+  void initState() {
+    super.initState();
+    _vm = context.read<MechanicViewModel>();
+    _vmListen = () {
+      final profile = _vm.meProfile;
+      if (_vm.meProfileLoading || profile == null) return;
+      if (identical(_syncedFromProfile, profile)) return;
+      _syncedFromProfile = profile;
+      setState(() {
+        _pushEnabled = profile.pushEnabled;
+        _notifRadius = profile.alertRadiusMiles;
+        _notifNewJobs = profile.notifNewBreakdownJobs;
+        _notifJobUpdates = profile.notifJobAcceptedDeclined;
+        _notifPayments = profile.notifPaymentReceived;
+        _notifSystem = profile.notifSystemAlerts;
+      });
+    };
+    _vm.addListener(_vmListen);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _vmListen());
+  }
+
+  @override
+  void dispose() {
+    _vm.removeListener(_vmListen);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final vm = context.watch<MechanicViewModel>();
+    final p = vm.meProfile;
+    final loading = vm.meProfileLoading;
+    final err = vm.meProfileError;
+
     const radii = [5, 10, 25, 50];
+
+    final avatarUrl = () {
+      final u = p?.profilePhotoUrl?.trim();
+      if (u != null && u.isNotEmpty) return u;
+      return AppAssets.mechanicPortrait;
+    }();
+
+    final displayName = p?.displayName ?? (loading ? '…' : 'Mechanic');
+    final ratingLabel = p != null ? p.avgRating.toStringAsFixed(1) : (loading ? '…' : '—');
+    final avgForStars = p?.avgRating ?? 0;
+    final jobsDoneLabel = p != null ? '${p.jobsDone}' : (loading ? '…' : '—');
+    final responseLabel =
+        (p != null && p.responseMinutes > 0) ? '${p.responseMinutes} min' : (loading ? '…' : '—');
+
+    final hourlyLine = p != null ? '${p.formatMoney(p.hourlyRate)} / hr' : (loading ? '…' : '—');
+    final emergencyLine =
+        loading && p == null ? '…' : (p != null && p.emergencyRate != null ? '${p.formatMoney(p.emergencyRate)} / hr' : '—');
+    final callOutLine = p != null ? p.formatMoney(p.callOutFee) : (loading ? '…' : '—');
+    final serviceRadius = p?.serviceRadiusMiles;
+    final radiusLine = serviceRadius != null ? '$serviceRadius mi' : (loading ? '…' : '—');
+    final baseLine = loading && p == null ? '…' : (p != null ? p.baseLocationLine : '—');
+
+    final bankLabel = p?.bankDisplayName ?? (loading ? '…' : '—');
+    final accountMasked = p?.bankAccountMasked ?? (loading ? '…' : '—');
+    final sortCodeLabel = p?.bankSortCode ?? (loading ? '…' : '—');
+    final billingAddr = p?.billingAddress ?? (loading ? '…' : '—');
+    final vatNum = p?.vatNumber ?? (loading ? '…' : '—');
+    final vatReg = p?.vatRegistered == true;
+
+    final alertFootnoteBase = loading && p == null ? 'your base location' : (p?.baseLocationLine ?? 'your base location');
 
     Widget stat(String value, String label) {
       return Container(
@@ -5595,9 +5865,31 @@ class _MechanicProfileState extends State<_MechanicProfile> {
       );
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-      children: [
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: vm.loadMeProfile,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        children: [
+          if (err != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Material(
+                color: AppColors.red.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(14),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(err, style: TextStyle(color: AppColors.red.withValues(alpha: 0.95), fontSize: 12, height: 1.35)),
+                      TextButton(onPressed: loading ? null : vm.loadMeProfile, child: const Text('Retry')),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         // Hero
         Column(
           children: [
@@ -5607,10 +5899,17 @@ class _MechanicProfileState extends State<_MechanicProfile> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(18),
                   child: CachedNetworkImage(
-                    imageUrl: AppAssets.mechanicPortrait,
+                    imageUrl: avatarUrl,
                     width: 80,
                     height: 80,
                     fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => Container(
+                      width: 80,
+                      height: 80,
+                      color: AppColors.card2,
+                      alignment: Alignment.center,
+                      child: Icon(Icons.person_rounded, size: 40, color: AppColors.textMuted.withValues(alpha: 0.85)),
+                    ),
                   ),
                 ),
                 Positioned(
@@ -5632,18 +5931,25 @@ class _MechanicProfileState extends State<_MechanicProfile> {
               ],
             ),
             const SizedBox(height: 10),
-            const Text('Themba Dlamini', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+            Text(displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
             const SizedBox(height: 6),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 for (int i = 0; i < 5; i++)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 3),
-                    child: Icon(Icons.star, size: 16, color: AppColors.primary),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 3),
+                    child: Icon(
+                      Icons.star,
+                      size: 16,
+                      color: i < avgForStars.floor().clamp(0, 5) ? AppColors.primary : AppColors.textMuted.withValues(alpha: 0.35),
+                    ),
                   ),
                 const SizedBox(width: 4),
-                const Text('4.9', style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600)),
+                Text(
+                  ratingLabel,
+                  style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
               ],
             ),
           ],
@@ -5651,11 +5957,11 @@ class _MechanicProfileState extends State<_MechanicProfile> {
         const SizedBox(height: 14),
         Row(
           children: [
-            Expanded(child: stat('184', 'Jobs Done')),
+            Expanded(child: stat(jobsDoneLabel, 'Jobs Done')),
             const SizedBox(width: 10),
-            Expanded(child: stat('4.9', 'Avg Rating')),
+            Expanded(child: stat(ratingLabel, 'Avg Rating')),
             const SizedBox(width: 10),
-            Expanded(child: stat('6 min', 'Response')),
+            Expanded(child: stat(responseLabel, 'Response')),
           ],
         ),
         const SizedBox(height: 12),
@@ -5697,15 +6003,15 @@ class _MechanicProfileState extends State<_MechanicProfile> {
                 padding: const EdgeInsets.all(14),
                 child: Column(
                   children: [
-                    kv('Hourly Rate', '£75 / hr'),
+                    kv('Hourly Rate', hourlyLine),
                     const SizedBox(height: 10),
-                    kv('Emergency Rate', '£95 / hr'),
+                    kv('Emergency Rate', emergencyLine),
                     const SizedBox(height: 10),
-                    kv('Call-out Fee', '£35'),
+                    kv('Call-out Fee', callOutLine),
                     const SizedBox(height: 10),
-                    kv('Service Radius', '50 mi'),
+                    kv('Service Radius', radiusLine),
                     const SizedBox(height: 10),
-                    kv('Base Location', 'Manchester, M1'),
+                    kv('Base Location', baseLine),
                   ],
                 ),
               ),
@@ -5740,12 +6046,12 @@ class _MechanicProfileState extends State<_MechanicProfile> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: _notifEnabled ? AppColors.primary.withValues(alpha: 0.15) : AppColors.border,
+                        color: _pushEnabled ? AppColors.primary.withValues(alpha: 0.15) : AppColors.border,
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Icon(
                         Icons.notifications_none_rounded,
-                        color: _notifEnabled ? AppColors.primary : AppColors.textMuted,
+                        color: _pushEnabled ? AppColors.primary : AppColors.textMuted,
                         size: 18,
                       ),
                     ),
@@ -5756,22 +6062,22 @@ class _MechanicProfileState extends State<_MechanicProfile> {
                         children: [
                           const Text('Enable Notifications', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
                           Text(
-                            _notifEnabled ? 'You are receiving job alerts' : 'Tap to turn on job alerts',
+                            _pushEnabled ? 'You are receiving job alerts' : 'Tap to turn on job alerts',
                             style: const TextStyle(color: Color(0xFF6B7280), fontSize: 10),
                           ),
                         ],
                       ),
                     ),
                     Switch(
-                      value: _notifEnabled,
-                      onChanged: (v) => setState(() => _notifEnabled = v),
+                      value: _pushEnabled,
+                      onChanged: (v) => setState(() => _pushEnabled = v),
                       activeTrackColor: AppColors.primary,
                       activeThumbColor: Colors.white,
                     ),
                   ],
                 ),
               ),
-              if (_notifEnabled) ...[
+              if (_pushEnabled) ...[
                 const Divider(height: 1, color: AppColors.border),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -5812,7 +6118,7 @@ class _MechanicProfileState extends State<_MechanicProfile> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        "You'll be notified of breakdown jobs within $_notifRadius mi of Manchester M1",
+                        "You'll be notified of breakdown jobs within $_notifRadius mi of $alertFootnoteBase",
                         style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
                       ),
                       const SizedBox(height: 14),
@@ -5879,11 +6185,11 @@ class _MechanicProfileState extends State<_MechanicProfile> {
                 padding: const EdgeInsets.all(14),
                 child: Column(
                   children: [
-                    kv('Bank', 'Barclays'),
+                    kv('Bank', bankLabel),
                     const SizedBox(height: 10),
-                    kv('Account', '•••• •••• 4521'),
+                    kv('Account', accountMasked),
                     const SizedBox(height: 10),
-                    kv('Sort Code', '20-14-55'),
+                    kv('Sort Code', sortCodeLabel),
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 10),
                       child: Divider(height: 1, color: Color(0xFF1E1E1E)),
@@ -5893,17 +6199,17 @@ class _MechanicProfileState extends State<_MechanicProfile> {
                       children: [
                         const Text('Billing Address', style: TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            '14 Workshop Lane, Manchester M1 2AB',
+                            billingAddr,
                             textAlign: TextAlign.right,
-                            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600, height: 1.35),
+                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600, height: 1.35),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    kv('VAT Number', 'GB 345 7821 00'),
+                    kv('VAT Number', vatNum),
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -5912,13 +6218,19 @@ class _MechanicProfileState extends State<_MechanicProfile> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: AppColors.green.withValues(alpha: 0.10),
+                            color: vatReg ? AppColors.green.withValues(alpha: 0.10) : AppColors.textMuted.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: AppColors.green.withValues(alpha: 0.20)),
+                            border: Border.all(
+                              color: vatReg ? AppColors.green.withValues(alpha: 0.20) : AppColors.border2,
+                            ),
                           ),
-                          child: const Text(
-                            'YES',
-                            style: TextStyle(color: AppColors.green, fontSize: 10, fontWeight: FontWeight.w900),
+                          child: Text(
+                            vatReg ? 'YES' : 'NO',
+                            style: TextStyle(
+                              color: vatReg ? AppColors.green : AppColors.textMuted,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
                         ),
                       ],
@@ -5940,7 +6252,11 @@ class _MechanicProfileState extends State<_MechanicProfile> {
         profileShortcut(
           icon: Icons.credit_card,
           title: 'Payment Methods',
-          subtitle: 'Manage cards for expenses & receipts',
+          subtitle: (() {
+            final card = p?.paymentCardLabel?.trim();
+            if (card != null && card.isNotEmpty) return card;
+            return 'Manage cards for expenses & receipts';
+          })(),
           onTap: widget.onPayment,
         ),
         const SizedBox(height: 10),
@@ -5963,6 +6279,7 @@ class _MechanicProfileState extends State<_MechanicProfile> {
           label: const Text('Log Out', style: TextStyle(color: AppColors.red, fontWeight: FontWeight.w700)),
         ),
       ],
+    ),
     );
   }
 }
