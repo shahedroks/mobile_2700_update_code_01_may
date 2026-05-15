@@ -3,6 +3,8 @@ class MechanicMeProfile {
   const MechanicMeProfile({
     required this.userUpdatedAt,
     required this.displayName,
+    required this.email,
+    required this.phone,
     required this.profilePhotoUrl,
     required this.jobsDone,
     required this.avgRating,
@@ -34,6 +36,8 @@ class MechanicMeProfile {
   final String userUpdatedAt;
 
   final String displayName;
+  final String email;
+  final String phone;
   final String? profilePhotoUrl;
 
   /// From [`performance.jobsDone`](…) with fallback to `mechanicProfile.stats.jobsDone`.
@@ -141,13 +145,23 @@ class MechanicMeProfile {
       emergencyRate = num.tryParse('$emergencyRaw');
     }
 
-    final push = prefs['pushEnabled'] == true;
-    final alertR = _toInt(prefs['alertRadiusMiles']);
+    final push = prefs['pushEnabled'] == true || data['pushEnabled'] == true;
+    final alertR = () {
+      final a = _toInt(prefs['alertRadiusMiles']);
+      if (a > 0) return a;
+      final b = _toInt(data['alertRadiusMiles']);
+      return b > 0 ? b : 0;
+    }();
     final alertRadiusMiles = alertR > 0 ? alertR : 25;
+
+    final email = _trimStr(data['email']) ?? _trimStr(mp['email']) ?? '';
+    final phone = _trimStr(data['phone']) ?? _trimStr(mp['phone']) ?? _trimStr(mp['phoneNumber']) ?? '';
 
     return MechanicMeProfile(
       userUpdatedAt: _trimStr(data['updatedAt']) ?? '',
       displayName: _trimStr(mp['displayName']) ?? 'Mechanic',
+      email: email,
+      phone: phone,
       profilePhotoUrl: _trimStr(mp['profilePhotoUrl']),
       jobsDone: jobsDone,
       avgRating: avgRating,
@@ -173,7 +187,8 @@ class MechanicMeProfile {
       notifNewBreakdownJobs: notif['newBreakdownJobs'] == true,
       notifJobAcceptedDeclined: notif['jobAcceptedDeclined'] == true,
       notifPaymentReceived: notif['paymentReceived'] == true,
-      notifSystemAlerts: notif['systemAlerts'] == true,
+      notifSystemAlerts:
+          notif['systemAlerts'] == true || notif['systemAndAppAlerts'] == true,
       paymentCardLabel: _trimStr(pay['cardLabel']),
     );
   }

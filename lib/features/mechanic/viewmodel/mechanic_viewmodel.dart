@@ -1,8 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 
+import '../../../data/models/fleet_billing_payment_method.dart';
 import '../../../data/models/job_offer.dart';
+import '../../../data/models/mechanic_job_detail.dart';
 import '../../../data/models/mechanic_me_profile.dart';
+import '../models/mechanic_profile_extras.dart';
 import '../../../data/repositories/app_repository.dart';
 import '../../../data/services/mechanic_api_service.dart';
 // ignore: unused_import
@@ -493,6 +499,76 @@ class MechanicViewModel extends ChangeNotifier {
   MechanicMeProfile? meProfile;
   bool meProfileLoading = false;
   String? meProfileError;
+  bool meProfilePatchBusy = false;
+  String? meProfilePatchError;
+
+  /// `GET /api/v1/billing/payment-methods` (same billing API as fleet).
+  List<FleetBillingPaymentMethod> billingPaymentMethods = const [];
+  bool billingPaymentMethodsLoading = false;
+  String? billingPaymentMethodsError;
+
+  /// Active job tracker (`GET/PATCH /api/v1/jobs/:id`).
+  String? selectedJobTrackerId;
+  MechanicJobDetailParsed? jobTrackerDetail;
+  Map<String, dynamic>? jobWorkCompleteEnvelope;
+  bool jobTrackerLoading = false;
+  String? jobTrackerError;
+  bool jobTrackerActionBusy = false;
+
+  /// Job detail / quote flow: opened from feed (`GET /api/v1/jobs/:id`).
+  String? selectedQuoteJobId;
+  MechanicJobDetailParsed? jobQuoteDetail;
+  bool jobQuoteDetailLoading = false;
+  String? jobQuoteDetailError;
+  bool quoteSubmitBusy = false;
+
+  /// Profile → Messages (demo threads until chat API is wired).
+  List<MechanicMessageThread> messageThreads = const [
+    MechanicMessageThread(
+      id: 't1',
+      title: 'Logistix Transport',
+      subtitle: 'TF-8810 · Brake inspection',
+      photoUrl: 'https://i.pravatar.cc/150?img=12',
+      preview: 'Thanks — invoice received. Appreciated the fast turnaround.',
+      timeLabel: 'Yesterday',
+      phone: '+44 7700 900111',
+    ),
+    MechanicMessageThread(
+      id: 't2',
+      title: 'Sarah Mitchell',
+      subtitle: 'Fleet manager · NorthWest Haulage',
+      photoUrl: 'https://i.pravatar.cc/150?img=47',
+      preview: 'Can you fit us in Thursday morning for the DAF?',
+      timeLabel: '09:12',
+      phone: '+44 7700 900222',
+    ),
+    MechanicMessageThread(
+      id: 't3',
+      title: 'TruckFix Support',
+      subtitle: 'System & billing',
+      photoUrl: 'https://i.pravatar.cc/150?img=3',
+      preview: 'Your VAT certificate was verified successfully.',
+      timeLabel: 'Mon',
+      phone: '+44 330 123 4567',
+    ),
+  ];
+  MechanicMessageThread? activeChatPeer;
+
+  /// Profile → Employees (local list until team API is wired).
+  List<MechanicEmployeeRow> mechanicEmployees = const [
+    MechanicEmployeeRow(
+      id: 'e1',
+      name: 'James Porter',
+      email: 'james.porter@northwesthaulage.co.uk',
+      phone: '+44 7700 900333',
+    ),
+    MechanicEmployeeRow(
+      id: 'e2',
+      name: 'Aisha Khan',
+      email: 'aisha.khan@northwesthaulage.co.uk',
+      phone: '+44 7700 900444',
+    ),
+  ];
 
   List<JobOffer> get rawJobs => _jobs.mechanicJobsNearby();
 
@@ -516,6 +592,112 @@ class MechanicViewModel extends ChangeNotifier {
     }
   }
 
+  /// `PATCH /api/v1/users/me` — partial updates; refreshes [meProfile] from the response envelope.
+  Future<void> patchUsersMe(Map<String, dynamic> payload) async {
+    final session = await _auth.getSession();
+    final token = session?.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      throw Exception('Missing access token. Please login again.');
+    }
+    meProfilePatchBusy = true;
+    meProfilePatchError = null;
+    notifyListeners();
+    try {
+      final body = await _api.updateMe(accessToken: token, payload: payload);
+      meProfile = MechanicMeProfile.fromUsersMeEnvelope(body);
+      meProfileError = null;
+    } catch (e) {
+      meProfilePatchError = e.toString();
+      rethrow;
+    } finally {
+      meProfilePatchBusy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Notification toggles + alert radius (flat keys per backend / Postman).
+  Future<void> patchMechanicNotificationSettings({
+    required bool pushEnabled,
+    required int alertRadiusMiles,
+    required bool newBreakdownJobs,
+    required bool jobAcceptedDeclined,
+    required bool paymentReceived,
+    required bool systemAndAppAlerts,
+  }) {
+    return patchUsersMe({
+      'pushEnabled': pushEnabled,
+      'alertRadiusMiles': alertRadiusMiles,
+      'newBreakdownJobs': newBreakdownJobs,
+      'jobAcceptedDeclined': jobAcceptedDeclined,
+      'paymentReceived': paymentReceived,
+      'systemAndAppAlerts': systemAndAppAlerts,
+    });
+  }
+
+  /// Full mechanic profile edit (personal, rates, bank/VAT) while preserving coverage + notification prefs.
+  Future<void> saveMechanicProfileFromEdit({
+    required String displayName,
+    required String email,
+    required String phone,
+    required int hourlyRate,
+    int? emergencyRate,
+    required String bankDisplayName,
+    required String bankAccountField,
+    required String bankSortCode,
+    required String billingAddress,
+    required String vatNumber,
+    required bool vatRegistered,
+  }) async {
+    final p = meProfile;
+    if (p == null) {
+      throw Exception('Profile is still loading. Try again in a moment.');
+    }
+
+    final callOut = p.callOutFee ?? 35;
+    final serviceRadius = p.serviceRadiusMiles ?? 50;
+    final baseLocationText = p.baseLocationText;
+    final basePostcode = p.basePostcode;
+
+    final trimmedAcct = bankAccountField.trim();
+    final digits = trimmedAcct.replaceAll(RegExp(r'\D'), '');
+    String? bankAccountMasked;
+    if (trimmedAcct.contains('*')) {
+      bankAccountMasked = trimmedAcct;
+    } else if (digits.length >= 4) {
+      bankAccountMasked = '**** **** ${digits.substring(digits.length - 4)}';
+    } else if (digits.isNotEmpty) {
+      bankAccountMasked = digits;
+    } else {
+      bankAccountMasked = p.bankAccountMasked;
+    }
+
+    final payload = <String, dynamic>{
+      'displayName': displayName.trim(),
+      'email': email.trim(),
+      'phone': phone.trim(),
+      'hourlyRate': hourlyRate,
+      'callOutFee': callOut,
+      'serviceRadiusMiles': serviceRadius.round(),
+      'baseLocationText': baseLocationText.trim(),
+      'basePostcode': basePostcode.trim(),
+      if (emergencyRate != null) 'emergencyRate': emergencyRate,
+      'bankDisplayName': bankDisplayName.trim(),
+      if (bankAccountMasked != null && bankAccountMasked.isNotEmpty) 'bankAccountMasked': bankAccountMasked,
+      'bankSortCode': bankSortCode.trim(),
+      'billingAddress': billingAddress.trim(),
+      'vatNumber': vatNumber.trim(),
+      'vatRegistered': vatRegistered,
+      'pushEnabled': p.pushEnabled,
+      'alertRadiusMiles': p.alertRadiusMiles,
+      'newBreakdownJobs': p.notifNewBreakdownJobs,
+      'jobAcceptedDeclined': p.notifJobAcceptedDeclined,
+      'paymentReceived': p.notifPaymentReceived,
+      'systemAndAppAlerts': p.notifSystemAlerts,
+    };
+
+    await patchUsersMe(payload);
+  }
+
   List<JobOffer> filteredJobs() {
     var list = rawJobs.where((j) => j.distanceMi <= radiusMi);
     if (maxDistMi != null) {
@@ -525,11 +707,52 @@ class MechanicViewModel extends ChangeNotifier {
   }
 
   void setTab(String t) {
+    if (tab == 'quote-detail' && t != 'quote-detail') {
+      clearJobQuoteDetail();
+    }
+    if (tab == 'profile-messages-chat' && t != 'profile-messages-chat') {
+      activeChatPeer = null;
+    }
     tab = t;
     notifyListeners();
     if (t == 'profile') {
       loadMeProfile();
     }
+    if (t == 'edit-profile' && meProfile == null && !meProfileLoading) {
+      loadMeProfile();
+    }
+  }
+
+  void openMessageChat(MechanicMessageThread thread) {
+    activeChatPeer = thread;
+    tab = 'profile-messages-chat';
+    notifyListeners();
+  }
+
+  void closeMessageChat() {
+    activeChatPeer = null;
+    tab = 'profile-messages';
+    notifyListeners();
+  }
+
+  void addMechanicEmployee({
+    required String name,
+    required String email,
+    required String phone,
+    required String password,
+  }) {
+    if (password.isEmpty) return;
+    final now = DateTime.now();
+    mechanicEmployees = [
+      MechanicEmployeeRow(
+        id: 'emp_${now.millisecondsSinceEpoch}',
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+      ),
+      ...mechanicEmployees,
+    ];
+    notifyListeners();
   }
 
   static const Map<String, _Coord> _cityCoords = {
@@ -741,6 +964,438 @@ class MechanicViewModel extends ChangeNotifier {
     );
   }
 
+  Future<void> loadBillingPaymentMethods({bool silent = false}) async {
+    final session = await _auth.getSession();
+    final token = session?.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      billingPaymentMethodsError = 'Not signed in';
+      billingPaymentMethods = const [];
+      notifyListeners();
+      return;
+    }
+    if (!silent) {
+      billingPaymentMethodsLoading = true;
+      billingPaymentMethodsError = null;
+      notifyListeners();
+    }
+    try {
+      final body = await _api.fetchBillingPaymentMethods(accessToken: token);
+      final raw = body['data'];
+      final list = raw is List ? raw : const [];
+      billingPaymentMethods = list
+          .whereType<Map>()
+          .map((m) => FleetBillingPaymentMethod.maybeFromJson(m.cast<String, dynamic>()))
+          .whereType<FleetBillingPaymentMethod>()
+          .where((p) => p.isActive)
+          .toList(growable: false);
+      billingPaymentMethodsError = null;
+    } catch (e) {
+      if (!silent) {
+        billingPaymentMethodsError = e.toString();
+        billingPaymentMethods = const [];
+      } else {
+        billingPaymentMethodsError = e.toString();
+      }
+    } finally {
+      if (!silent) {
+        billingPaymentMethodsLoading = false;
+      }
+      notifyListeners();
+    }
+  }
+
+  Future<void> setDefaultBillingPaymentMethod(String paymentMethodId) async {
+    final session = await _auth.getSession();
+    final token = session?.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      throw Exception('Not signed in');
+    }
+    final id = paymentMethodId.trim();
+    if (id.isEmpty) {
+      throw Exception('Invalid payment method');
+    }
+    await _api.setBillingPaymentMethodDefault(accessToken: token, methodId: id);
+    billingPaymentMethodsError = null;
+    await loadBillingPaymentMethods(silent: true);
+    if (billingPaymentMethodsError != null && billingPaymentMethodsError!.trim().isNotEmpty) {
+      throw Exception(billingPaymentMethodsError);
+    }
+  }
+
+  Future<void> deleteBillingPaymentMethod(String paymentMethodId) async {
+    final session = await _auth.getSession();
+    final token = session?.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      throw Exception('Not signed in');
+    }
+    final id = paymentMethodId.trim();
+    if (id.isEmpty) {
+      throw Exception('Invalid payment method');
+    }
+    await _api.deleteBillingPaymentMethod(accessToken: token, methodId: id);
+    billingPaymentMethodsError = null;
+    await loadBillingPaymentMethods(silent: true);
+    if (billingPaymentMethodsError != null && billingPaymentMethodsError!.trim().isNotEmpty) {
+      throw Exception(billingPaymentMethodsError);
+    }
+  }
+
+  Future<void> createBillingPaymentMethod({
+    required String cardBrandLower,
+    required String last4,
+    required int expMonth,
+    required int expYear,
+  }) async {
+    final session = await _auth.getSession();
+    final token = session?.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      throw Exception('Not signed in');
+    }
+    final l4 = last4.trim();
+    if (l4.length != 4 || int.tryParse(l4) == null) {
+      throw Exception('Invalid card number (need last 4 digits)');
+    }
+    if (expMonth < 1 || expMonth > 12) {
+      throw Exception('Invalid expiry month');
+    }
+    if (expYear < 2000) {
+      throw Exception('Invalid expiry year');
+    }
+    await _api.postBillingPaymentMethod(
+      accessToken: token,
+      methodType: 'CARD',
+      provider: 'MANUAL',
+      providerMethodId: 'pm_manual_${DateTime.now().millisecondsSinceEpoch}',
+      cardBrand: cardBrandLower,
+      last4: l4,
+      expMonth: expMonth,
+      expYear: expYear,
+    );
+    billingPaymentMethodsError = null;
+    await loadBillingPaymentMethods(silent: true);
+    if (billingPaymentMethodsError != null && billingPaymentMethodsError!.trim().isNotEmpty) {
+      throw Exception(billingPaymentMethodsError);
+    }
+  }
+
+  void selectJobForTracker(String jobId) {
+    final id = jobId.trim();
+    selectedJobTrackerId = id.isEmpty ? null : id;
+    jobTrackerDetail = null;
+    jobWorkCompleteEnvelope = null;
+    jobTrackerError = null;
+    notifyListeners();
+  }
+
+  void clearJobTrackerSelection() {
+    selectedJobTrackerId = null;
+    jobTrackerDetail = null;
+    jobWorkCompleteEnvelope = null;
+    jobTrackerError = null;
+    notifyListeners();
+  }
+
+  void openJobQuoteDetail(JobOffer job) {
+    final id = job.backendId?.trim();
+    if (id == null || id.isEmpty) {
+      return;
+    }
+    selectedQuoteJobId = id;
+    jobQuoteDetail = null;
+    jobQuoteDetailError = null;
+    tab = 'quote-detail';
+    notifyListeners();
+  }
+
+  void clearJobQuoteDetail() {
+    selectedQuoteJobId = null;
+    jobQuoteDetail = null;
+    jobQuoteDetailError = null;
+    notifyListeners();
+  }
+
+  Future<void> loadJobQuoteDetail({bool silent = false}) async {
+    final id = selectedQuoteJobId;
+    if (id == null || id.isEmpty) {
+      jobQuoteDetailError = 'No job selected';
+      jobQuoteDetail = null;
+      if (!silent) {
+        jobQuoteDetailLoading = false;
+      }
+      notifyListeners();
+      return;
+    }
+    if (!silent) {
+      jobQuoteDetailLoading = true;
+      jobQuoteDetailError = null;
+      notifyListeners();
+    }
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) {
+        throw Exception('Missing access token. Please login again.');
+      }
+      final body = await _api.fetchJobById(accessToken: token, jobId: id);
+      jobQuoteDetail = MechanicJobDetailParsed.tryParse(body);
+      if (jobQuoteDetail == null) {
+        throw Exception('Invalid job response');
+      }
+      jobQuoteDetailError = null;
+    } catch (e) {
+      jobQuoteDetailError = e.toString();
+      if (!silent) {
+        jobQuoteDetail = null;
+      }
+    } finally {
+      if (!silent) {
+        jobQuoteDetailLoading = false;
+      }
+      notifyListeners();
+    }
+  }
+
+  /// Maps mechanic quote UI to `POST /api/v1/jobs/:id/quotes`.
+  Future<String?> submitJobQuote({
+    required double amount,
+    required String notes,
+    required String availabilityUi,
+    String? scheduledDateKey,
+    String? scheduledTime,
+  }) async {
+    final id = selectedQuoteJobId;
+    if (id == null || id.isEmpty) return 'No job selected';
+    if (amount <= 0) return 'Enter a valid quote amount';
+
+    var availabilityType = 'NOW';
+    var etaMinutes = 10;
+    String? scheduledAtIso;
+
+    switch (availabilityUi) {
+      case 'In 30 min':
+        etaMinutes = 30;
+        break;
+      case 'In 1 hr':
+        etaMinutes = 60;
+        break;
+      case 'Scheduled':
+        availabilityType = 'SCHEDULED';
+        etaMinutes = 0;
+        if (scheduledDateKey != null &&
+            scheduledDateKey.trim().isNotEmpty &&
+            scheduledTime != null &&
+            scheduledTime.trim().isNotEmpty) {
+          final dp = scheduledDateKey.trim().split('-');
+          final tp = scheduledTime.trim().split(':');
+          if (dp.length == 3 && tp.length >= 2) {
+            final y = int.tryParse(dp[0]);
+            final mo = int.tryParse(dp[1]);
+            final da = int.tryParse(dp[2]);
+            final h = int.tryParse(tp[0]);
+            final mi = int.tryParse(tp[1]);
+            if (y != null && mo != null && da != null && h != null && mi != null) {
+              scheduledAtIso = DateTime(y, mo, da, h, mi).toUtc().toIso8601String();
+            }
+          }
+        }
+        if (scheduledAtIso == null) {
+          return 'Pick a date and time for a scheduled quote';
+        }
+        break;
+      case 'Available Now':
+      default:
+        etaMinutes = 10;
+        availabilityType = 'NOW';
+        break;
+    }
+
+    quoteSubmitBusy = true;
+    notifyListeners();
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) return 'Not signed in';
+      await _api.postJobQuote(
+        accessToken: token,
+        jobId: id,
+        amount: amount,
+        etaMinutes: etaMinutes,
+        notes: notes,
+        availabilityType: availabilityType,
+        scheduledAt: scheduledAtIso,
+      );
+      await loadJobFeed();
+      await loadMyQuotes();
+      return null;
+    } catch (e) {
+      return e.toString();
+    } finally {
+      quoteSubmitBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadJobTrackerDetail({bool silent = false}) async {
+    final id = selectedJobTrackerId;
+    if (id == null || id.isEmpty) {
+      jobTrackerError = 'No job selected';
+      jobTrackerDetail = null;
+      if (!silent) {
+        jobTrackerLoading = false;
+      }
+      notifyListeners();
+      return;
+    }
+    if (!silent) {
+      jobTrackerLoading = true;
+      jobTrackerError = null;
+      notifyListeners();
+    }
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) {
+        throw Exception('Missing access token. Please login again.');
+      }
+      final body = await _api.fetchJobById(accessToken: token, jobId: id);
+      jobTrackerDetail = MechanicJobDetailParsed.tryParse(body);
+      if (jobTrackerDetail == null) {
+        throw Exception('Invalid job response');
+      }
+      jobTrackerError = null;
+    } catch (e) {
+      jobTrackerError = e.toString();
+      if (!silent) {
+        jobTrackerDetail = null;
+      }
+    } finally {
+      if (!silent) {
+        jobTrackerLoading = false;
+      }
+      notifyListeners();
+    }
+  }
+
+  Future<String?> patchJobTrackerJourneyStart() async {
+    final id = selectedJobTrackerId;
+    if (id == null || id.isEmpty) return 'No job selected';
+    jobTrackerActionBusy = true;
+    notifyListeners();
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) return 'Not signed in';
+      await _api.patchJobJourneyStart(accessToken: token, jobId: id);
+      await loadJobTrackerDetail(silent: true);
+      return null;
+    } catch (e) {
+      return e.toString();
+    } finally {
+      jobTrackerActionBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> patchJobTrackerArrive() async {
+    final id = selectedJobTrackerId;
+    if (id == null || id.isEmpty) return 'No job selected';
+    jobTrackerActionBusy = true;
+    notifyListeners();
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) return 'Not signed in';
+      await _api.patchJobArrive(accessToken: token, jobId: id);
+      await loadJobTrackerDetail(silent: true);
+      return null;
+    } catch (e) {
+      return e.toString();
+    } finally {
+      jobTrackerActionBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> patchJobTrackerWorkStart() async {
+    final id = selectedJobTrackerId;
+    if (id == null || id.isEmpty) return 'No job selected';
+    jobTrackerActionBusy = true;
+    notifyListeners();
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) return 'Not signed in';
+      await _api.patchJobWorkStart(accessToken: token, jobId: id);
+      await loadJobTrackerDetail(silent: true);
+      return null;
+    } catch (e) {
+      return e.toString();
+    } finally {
+      jobTrackerActionBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> patchJobWorkComplete({
+    required String repairNotes,
+    required Map<String, dynamic> invoice,
+    required double finalAmount,
+    List<http.MultipartFile> photos = const [],
+  }) async {
+    final id = selectedJobTrackerId;
+    if (id == null || id.isEmpty) return 'No job selected';
+    jobTrackerActionBusy = true;
+    notifyListeners();
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) return 'Not signed in';
+      final totalStr = finalAmount.toString();
+      final body = await _api.patchJobWorkCompleteMultipart(
+        accessToken: token,
+        jobId: id,
+        repairNotes: repairNotes.trim(),
+        invoiceJson: jsonEncode(invoice),
+        finalAmount: totalStr,
+        totalAmount: totalStr,
+        photos: photos,
+      );
+      jobWorkCompleteEnvelope = body;
+      await loadJobTrackerDetail(silent: true);
+      return null;
+    } catch (e) {
+      return e.toString();
+    } finally {
+      jobTrackerActionBusy = false;
+      notifyListeners();
+    }
+  }
+
+  /// `POST /api/v1/jobs/:id/reviews/fleet` — star rating + optional comment for the fleet operator.
+  Future<String?> submitJobFleetReview({
+    required int rating,
+    String comment = '',
+  }) async {
+    final id = selectedJobTrackerId;
+    if (id == null || id.isEmpty) return 'No job selected';
+    if (rating < 1 || rating > 5) return 'Select a star rating';
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) return 'Not signed in';
+      await _api.postJobFleetReview(
+        accessToken: token,
+        jobId: id,
+        rating: rating,
+        comment: comment,
+      );
+      await loadJobTrackerDetail(silent: true);
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
   Future<void> loadMyJobs() async {
     myJobsLoading = true;
     myJobsError = null;
@@ -780,8 +1435,17 @@ class MechanicViewModel extends ChangeNotifier {
   }
 
   String get bottomNavResolved {
-    if (tab == 'job-tracker' || tab == 'quote-detail') return 'my-jobs';
-    if (tab == 'earnings' || tab == 'edit-profile' || tab == 'payment-methods') return 'profile';
+    if (tab == 'job-tracker') return 'my-jobs';
+    if (tab == 'quote-detail') return 'feed';
+    if (tab == 'earnings' ||
+        tab == 'edit-profile' ||
+        tab == 'payment-methods' ||
+        tab == 'profile-messages' ||
+        tab == 'profile-messages-chat' ||
+        tab == 'profile-employees' ||
+        tab == 'profile-employees-add') {
+      return 'profile';
+    }
     return tab;
   }
 }
