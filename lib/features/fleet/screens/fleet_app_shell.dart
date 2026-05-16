@@ -9,15 +9,18 @@ import '../../../core/constants/app_assets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/fleet_job_quote.dart';
 import '../../../data/models/fleet_job_summary.dart';
+import '../../../data/models/fleet_vehicle_detail.dart';
 import '../../../data/models/session.dart';
 import '../../../data/models/vehicle.dart';
 import '../../../data/repositories/app_repository.dart';
 import '../../../data/services/support_api_service.dart';
 import '../../../routes/app_routes.dart';
+import '../../../widgets/api_job_chat_screen.dart';
 import '../../auth/viewmodel/auth_viewmodel.dart';
 import '../models/fleet_chat_session.dart';
 import '../viewmodel/fleet_viewmodel.dart';
 import 'fleet_chat_screen.dart';
+import 'fleet_messages_screen.dart';
 import '../widgets/fleet_track_job_detail_view.dart';
 import 'notifications_screen.dart';
 import 'post_job_screen.dart';
@@ -338,9 +341,35 @@ class _FleetScaffold extends StatelessWidget {
           if (vm.showHelp) _FleetHelpOverlay(),
           if (vm.showNotifications) FleetNotificationsOverlay(),
           if (vm.showChat && vm.chatSession != null)
-            FleetChatScreen(
-              session: vm.chatSession!,
-              onClose: vm.closeChat,
+            Builder(
+              builder: (context) {
+                final session = vm.chatSession!;
+                final token = context.watch<AuthViewModel>().session?.accessToken?.trim();
+                final jobId = session.jobId?.trim();
+                if (token != null &&
+                    token.isNotEmpty &&
+                    jobId != null &&
+                    jobId.isNotEmpty) {
+                  return Positioned.fill(
+                    child: ApiJobChatScreen(
+                      accessToken: token,
+                      jobId: jobId,
+                      headerTitle: session.mechanicName,
+                      headerSubtitle: '${session.jobCode} · ${session.truckLine}',
+                      headerAvatarUrl: session.mechanicPhotoUrl,
+                      peerPhone: session.mechanicPhone,
+                      onClose: vm.closeChat,
+                      avatarFallbackAsset: AppAssets.mechanicPortrait,
+                    ),
+                  );
+                }
+                return Positioned.fill(
+                  child: FleetChatScreen(
+                    session: session,
+                    onClose: vm.closeChat,
+                  ),
+                );
+              },
             ),
         ],
       ),
@@ -383,12 +412,53 @@ class _FleetBody extends StatelessWidget {
           vm: vm,
           onEdit: () => vm.openFleetEditProfile(fromPostJobGate: false),
           onVehicles: vm.openVehicles,
+          onMessages: () => vm.setTab('profile-messages'),
           onPayment: vm.openPayment,
           onHelp: vm.openHelp,
           onLogout: () async {
             await context.read<AuthViewModel>().logout();
             if (context.mounted) context.go(AppRoutes.login);
           },
+        );
+      case 'profile-messages':
+        return FleetMessagesListPage(onBack: () => vm.setTab('profile'));
+      case 'profile-messages-chat':
+        final peer = vm.activeFleetInboxChat;
+        if (peer == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) vm.setTab('profile-messages');
+          });
+          return const ColoredBox(color: Color(0xFF080808), child: SizedBox.expand());
+        }
+        final token = context.watch<AuthViewModel>().session?.accessToken;
+        if (token == null || token.trim().isEmpty) {
+          return ColoredBox(
+            color: const Color(0xFF080808),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Session expired. Sign in again.',
+                      style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 13),
+                    ),
+                    TextButton(onPressed: vm.closeFleetInboxChat, child: const Text('Back')),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+        return ApiJobChatScreen(
+          accessToken: token,
+          jobId: peer.conversationId,
+          headerTitle: peer.title,
+          headerSubtitle: peer.subtitle,
+          headerAvatarUrl: peer.counterpartyPhotoUrl,
+          onClose: vm.closeFleetInboxChat,
+          avatarFallbackAsset: AppAssets.mechanicPortrait,
         );
       case 'edit-profile':
         return _FleetEditProfile(
@@ -1262,6 +1332,10 @@ class _FleetDashboardJobOverlayState extends State<_FleetDashboardJobOverlay> {
                                               }(),
                                               jobCode: widget.job.id,
                                               truckLine: _fleetTruckDisplay(widget.job),
+                                              jobId: () {
+                                                final bid = widget.job.backendId?.trim();
+                                                return (bid != null && bid.isNotEmpty) ? bid : null;
+                                              }(),
                                             ),
                                           );
                                           widget.onClose();
@@ -2131,6 +2205,31 @@ class _FleetDashboardState extends State<_FleetDashboard> {
                       ],
                     ),
                   ),
+                  Material(
+                    color: const Color(0xFF111111),
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      onTap: vm.loading ? null : () => vm.refresh(),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFF1E1E1E)),
+                        ),
+                        alignment: Alignment.center,
+                        child: vm.loading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                              )
+                            : Icon(Icons.refresh_rounded, color: Colors.white.withValues(alpha: 0.95), size: 22),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
@@ -2633,6 +2732,7 @@ class _FleetDashboardState extends State<_FleetDashboard> {
             backgroundColor: const Color(0xFF111111),
             onRefresh: vm.refresh,
             child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
               children: [
           Row(
@@ -3674,6 +3774,7 @@ class _FleetProfile extends StatelessWidget {
     required this.vm,
     required this.onEdit,
     required this.onVehicles,
+    required this.onMessages,
     required this.onPayment,
     required this.onHelp,
     required this.onLogout,
@@ -3682,6 +3783,7 @@ class _FleetProfile extends StatelessWidget {
   final FleetViewModel vm;
   final VoidCallback onEdit;
   final VoidCallback onVehicles;
+  final VoidCallback onMessages;
   final VoidCallback onPayment;
   final VoidCallback onHelp;
   final VoidCallback onLogout;
@@ -3858,6 +3960,13 @@ class _FleetProfile extends StatelessWidget {
                         ),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  _profileActionTile(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    title: 'Messages',
+                    subtitle: 'Chats with mechanics & TruckFix support',
+                    onTap: onMessages,
                   ),
                   const SizedBox(height: 12),
                   _profileActionTile(
@@ -4099,7 +4208,7 @@ class _FleetEditProfileState extends State<_FleetEditProfile> {
     _phone = TextEditingController(text: '+44 7712 345 678');
     _email = TextEditingController(text: 'john@logistix.co.za');
 
-    _cardNumber = TextEditingController(text: '4242  4242  4242  4242');
+    _cardNumber = TextEditingController(text: '4242424242424242');
     _expiry = TextEditingController(text: '09 / 28');
     _ccv = TextEditingController(text: '');
     _billingAddress = TextEditingController(text: '123 Logistics Ave, Johannesburg');
@@ -4239,11 +4348,13 @@ class _FleetEditProfileState extends State<_FleetEditProfile> {
     bool obscure = false,
     Widget? suffix,
     String? hintText,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       obscureText: obscure,
+      inputFormatters: inputFormatters,
       style: const TextStyle(color: Colors.white, fontSize: 14),
       decoration: _fieldDecoration(hint: hintText).copyWith(suffixIcon: suffix),
     );
@@ -4376,6 +4487,10 @@ class _FleetEditProfileState extends State<_FleetEditProfile> {
                     _textField(
                       controller: _cardNumber,
                       keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(16),
+                      ],
                       suffix: Padding(
                         padding: const EdgeInsets.only(right: 12),
                         child: Icon(Icons.lock_outline_rounded, color: AppColors.textHint.withValues(alpha: 0.75), size: 18),
@@ -4507,24 +4622,32 @@ Widget _fleetFleetHeaderBackSquare({required VoidCallback onPressed}) {
 }
 
 void _showFleetEditVehicleSheet(BuildContext context, Vehicle vehicle) {
+  final fleetVm = context.read<FleetViewModel>();
   showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
     barrierColor: Colors.black.withValues(alpha: 0.85),
-    builder: (_) => _FleetEditVehicleSheet(vehicle: vehicle),
+    builder: (_) => ChangeNotifierProvider<FleetViewModel>.value(
+      value: fleetVm,
+      child: _FleetEditVehicleSheet(vehicle: vehicle),
+    ),
   );
 }
 
 void _showFleetAddVehicleSheet(BuildContext context) {
+  final fleetVm = context.read<FleetViewModel>();
   showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
     barrierColor: Colors.black.withValues(alpha: 0.85),
-    builder: (_) => const _FleetAddVehicleSheet(),
+    builder: (_) => ChangeNotifierProvider<FleetViewModel>.value(
+      value: fleetVm,
+      child: const _FleetAddVehicleSheet(),
+    ),
   );
 }
 
@@ -4541,13 +4664,31 @@ class _FleetVehicleDetail extends StatelessWidget {
 
   static const Color _cardBg = Color(0xFF121212);
   static const Color _jobNested = Color(0xFF0F0F0F);
-  static const Color _completeGreen = Color(0xFF22C55E);
 
-  /// Demo rows matching `VehicleFleetScreen` detail mock (no API yet).
-  static const List<({String title, String subtitle})> _demoRecentJobs = [
-    (title: 'Engine diagnostics', subtitle: '2 Mar 2025 · James Mitchell'),
-    (title: 'Brake replacement', subtitle: '15 Jan 2025 · Tom Stevens'),
-  ];
+  static String _formatIntGrouping(int n) {
+    final s = n.toString();
+    final sb = StringBuffer();
+    final len = s.length;
+    for (var i = 0; i < len; i++) {
+      if (i > 0 && (len - i) % 3 == 0) sb.write(',');
+      sb.write(s[i]);
+    }
+    return sb.toString();
+  }
+
+  static (Color border, Color fg) _statusStyle(String tone) {
+    switch (tone.toLowerCase()) {
+      case 'green':
+        return (const Color(0xFF22C55E), const Color(0xFF22C55E));
+      case 'red':
+        return (const Color(0xFFEF4444), const Color(0xFFEF4444));
+      case 'yellow':
+        return (const Color(0xFFEAB308), const Color(0xFFEAB308));
+      case 'amber':
+      default:
+        return (const Color(0xFFFBBF24), const Color(0xFFFBBF24));
+    }
+  }
 
   Widget _sectionTitle(String uppercase) {
     return Text(
@@ -4586,167 +4727,228 @@ class _FleetVehicleDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (fallbackMake, fallbackModel) = _fleetSplitMakeModel(vehicle.label);
-    final make = vehicle.make?.trim().isNotEmpty == true ? vehicle.make!.trim() : fallbackMake;
-    final model = vehicle.model?.trim().isNotEmpty == true ? vehicle.model!.trim() : fallbackModel;
+    final vm = context.watch<FleetViewModel>();
+    final detail = vm.vehicleDetailPayload;
+    final detailMatches = detail != null && detail.vehicle.id == vehicle.id;
+    final v = detailMatches ? detail.vehicle : vehicle;
+    final jobs = detailMatches ? detail.recentJobs : const <FleetVehicleRecentJob>[];
+    final loading = vm.vehicleDetailLoading;
+    final err = vm.vehicleDetailError;
+
+    final (fallbackMake, fallbackModel) = _fleetSplitMakeModel(v.label);
+    final make = v.make?.trim().isNotEmpty == true ? v.make!.trim() : fallbackMake;
+    final model = v.model?.trim().isNotEmpty == true ? v.model!.trim() : fallbackModel;
     final subtitle = [make, model].where((s) => s.isNotEmpty).join(' ');
 
     return ColoredBox(
       color: _FleetDashTheme.bgBlack,
       child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _fleetFleetHeaderBackSquare(onPressed: onBack),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        vehicle.plate,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: -0.3),
+        child: RefreshIndicator(
+          color: AppColors.primary,
+          onRefresh: () => vm.loadFleetVehicleDetail(vehicle.id),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+            children: [
+              if (err != null && vm.selectedVehicle?.id == vehicle.id)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Material(
+                    color: AppColors.red.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          Expanded(child: Text(err, style: TextStyle(color: AppColors.red.withValues(alpha: 0.95), fontSize: 12))),
+                          TextButton(onPressed: () => vm.loadFleetVehicleDetail(vehicle.id), child: const Text('Retry')),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle.isEmpty ? '—' : subtitle,
-                        style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.98), fontSize: 14, fontWeight: FontWeight.w600),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-              decoration: BoxDecoration(
-                color: _cardBg,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _sectionTitle('VEHICLE INFORMATION'),
-                  const Divider(height: 22, thickness: 0.6, color: Color(0xFF262626)),
-                  _infoRow(context, 'Registration', vehicle.plate),
-                  Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
-                  _infoRow(context, 'Make', make.isEmpty ? '—' : make),
-                  Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
-                  _infoRow(context, 'Model', model.isEmpty ? '—' : model),
-                  if (vehicle.year != null) ...[
-                    Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
-                    _infoRow(context, 'Year', '${vehicle.year}'),
-                  ],
-                  if (vehicle.vin != null && vehicle.vin!.trim().isNotEmpty) ...[
-                    Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
-                    _infoRow(context, 'VIN', vehicle.vin!.trim()),
-                  ],
+                  _fleetFleetHeaderBackSquare(onPressed: onBack),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          v.plate,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: -0.3),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle.isEmpty ? '—' : subtitle,
+                          style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.98), fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-              decoration: BoxDecoration(
-                color: _cardBg,
-                borderRadius: BorderRadius.circular(16),
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+                decoration: BoxDecoration(
+                  color: _cardBg,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _sectionTitle('VEHICLE INFORMATION'),
+                    const Divider(height: 22, thickness: 0.6, color: Color(0xFF262626)),
+                    _infoRow(context, 'Registration', v.plate),
+                    Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
+                    _infoRow(context, 'Make', make.isEmpty ? '—' : make),
+                    Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
+                    _infoRow(context, 'Model', model.isEmpty ? '—' : model),
+                    if (v.year != null) ...[
+                      Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
+                      _infoRow(context, 'Year', '${v.year}'),
+                    ],
+                    if (v.vin != null && v.vin!.trim().isNotEmpty) ...[
+                      Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
+                      _infoRow(context, 'VIN', v.vin!.trim()),
+                    ],
+                    if (v.currentMileageKm != null) ...[
+                      Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.06)),
+                      _infoRow(context, 'Mileage (km)', _formatIntGrouping(v.currentMileageKm!)),
+                    ],
+                  ],
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _sectionTitle('RECENT JOBS'),
-                  const SizedBox(height: 14),
-                  ..._demoRecentJobs.map((job) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: _jobNested,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF2A2A2A)),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                decoration: BoxDecoration(
+                  color: _cardBg,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _sectionTitle('RECENT JOBS'),
+                    const SizedBox(height: 14),
+                    if (loading && jobs.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                      )
+                    else if (jobs.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Text(
+                          'No recent jobs',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.9), fontSize: 13),
                         ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    job.title,
-                                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    job.subtitle,
-                                    style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 12, fontWeight: FontWeight.w500),
-                                  ),
-                                ],
-                              ),
+                      )
+                    else
+                      ...jobs.map((job) {
+                        final st = _statusStyle(job.statusTone);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: _jobNested,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFF2A2A2A)),
                             ),
-                            const SizedBox(width: 10),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: _completeGreen.withValues(alpha: 0.75)),
-                              ),
-                              child: const Text(
-                                'COMPLETE',
-                                style: TextStyle(color: _completeGreen, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.9),
-                              ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        job.title,
+                                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        job.subtitleLine,
+                                        style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 12, fontWeight: FontWeight.w500),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: st.$1.withValues(alpha: 0.75)),
+                                  ),
+                                  child: Text(
+                                    job.statusLabel,
+                                    style: TextStyle(color: st.$2, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.6),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        );
+                      }),
+                    if (detailMatches &&
+                        detail.recentJobsTotal != null &&
+                        jobs.isNotEmpty &&
+                        jobs.length < detail.recentJobsTotal!) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Showing ${jobs.length} of ${detail.recentJobsTotal} jobs on file',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.85), fontSize: 11),
                       ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-            const SizedBox(height: 28),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: onRequest,
-                icon: const Icon(Icons.build_rounded, size: 22, color: Colors.black),
-                label: const Text(
-                  'REQUEST SERVICE',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1.6),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.black,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ],
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _showFleetEditVehicleSheet(context, vehicle),
-                icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 20),
-                label: const Text(
-                  'Edit Vehicle Details',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  backgroundColor: const Color(0xFF141414),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: onRequest,
+                  icon: const Icon(Icons.build_rounded, size: 22, color: Colors.black),
+                  label: const Text(
+                    'REQUEST SERVICE',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1.6),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.black,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showFleetEditVehicleSheet(context, v),
+                  icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 20),
+                  label: const Text(
+                    'Edit Vehicle Details',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    backgroundColor: const Color(0xFF141414),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -5865,12 +6067,12 @@ class _FleetPaymentOverlayState extends State<_FleetPaymentOverlay> {
                       TextFormField(
                         controller: _addCardNumber,
                         keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(19)],
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(16)],
                         style: const TextStyle(color: Colors.white, fontSize: 14),
                         decoration: _addCardDecoration('1234 5678 9012 3456'),
                         validator: (v) {
                           final d = _cardDigitsOnly(v ?? '');
-                          if (d.length < 15) return 'Enter a valid card number';
+                          if (d.length < 13 || d.length > 16) return 'Enter a valid card number (13–16 digits)';
                           return null;
                         },
                       ),

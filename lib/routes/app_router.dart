@@ -41,6 +41,9 @@ abstract final class AppRouter {
       case 'mechanic-dashboard':
         router.go(AppRoutes.mechanicHome);
         return;
+      case 'employee-dashboard':
+        router.go(AppRoutes.employeeHome);
+        return;
       case 'company-dashboard':
         router.go(AppRoutes.companyHome);
         return;

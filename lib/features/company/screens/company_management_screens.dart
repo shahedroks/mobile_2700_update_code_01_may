@@ -10,8 +10,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../routes/app_routes.dart';
 import '../../../data/services/support_api_service.dart';
 import '../../auth/viewmodel/auth_viewmodel.dart';
-import '../../fleet/models/fleet_chat_session.dart';
-import '../../fleet/screens/fleet_chat_screen.dart';
 import '../viewmodel/company_viewmodel.dart';
 
 // ─── Helpers shared by company management screens ───────────────────────────
@@ -1681,9 +1679,8 @@ class _CompanyTeamManagementViewState extends State<CompanyTeamManagementView> {
     }
     final uri = Uri.parse('tel:$digits');
     try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else if (messengerContext.mounted) {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && messengerContext.mounted) {
         ScaffoldMessenger.maybeOf(messengerContext)?.showSnackBar(
           const SnackBar(content: Text('Unable to start call')),
         );
@@ -1695,29 +1692,6 @@ class _CompanyTeamManagementViewState extends State<CompanyTeamManagementView> {
         );
       }
     }
-  }
-
-  void _openTeamMemberChat(BuildContext rootModalContext, BuildContext sheetContext, CompanyTeamMember m) {
-    final session = FleetChatSession(
-      mechanicName: m.displayName,
-      mechanicPhone: m.phone.trim().isEmpty ? null : m.phone.trim(),
-      mechanicPhotoUrl: m.profilePhotoUrl.trim().isEmpty ? null : m.profilePhotoUrl.trim(),
-      jobCode: m.employeeId.isNotEmpty ? m.employeeId : 'Team member',
-      truckLine: m.jobTitle.isNotEmpty ? m.jobTitle : 'Company team chat',
-    );
-    Navigator.pop(sheetContext);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!rootModalContext.mounted) return;
-      Navigator.of(rootModalContext).push(
-        MaterialPageRoute<void>(
-          fullscreenDialog: true,
-          builder: (ctx) => FleetChatScreen(
-            session: session,
-            onClose: () => Navigator.of(ctx).pop(),
-          ),
-        ),
-      );
-    });
   }
 
   void _showMechanicDetail(BuildContext context, CompanyTeamMember m) {
@@ -1863,37 +1837,17 @@ class _CompanyTeamManagementViewState extends State<CompanyTeamManagementView> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed:
-                            m.phone.trim().isEmpty ? null : () => _dialTeamMemberPhone(sheetCtx, m),
-                        icon: const Icon(Icons.phone_outlined, size: 18, color: Colors.black),
-                        label: const Text('CALL', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _openTeamMemberChat(modalCtx, sheetCtx, m),
-                        icon: Icon(Icons.chat_bubble_outline_rounded, size: 18, color: Colors.white.withValues(alpha: 0.9)),
-                        label: const Text('MESSAGE', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-                          side: const BorderSide(color: AppColors.border2),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ),
-                  ],
+                FilledButton.icon(
+                  onPressed: m.phone.trim().isEmpty ? null : () => _dialTeamMemberPhone(sheetCtx, m),
+                  icon: const Icon(Icons.phone_outlined, size: 18, color: Colors.black),
+                  label: const Text('CALL', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size(double.infinity, 52),
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
                 const SizedBox(height: 22),
                 OutlinedButton(
@@ -2489,6 +2443,16 @@ class _CompanyProfileFullViewState extends State<CompanyProfileFullView> {
         ),
       ),
       const SizedBox(height: 12),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: CompanyProfileFullView._profileNavTile(
+          icon: Icons.chat_bubble_outline_rounded,
+          title: 'Messages',
+          subtitle: 'Chats with fleets, mechanics & TruckFix support',
+          onTap: () => vm.setScreen('company-messages'),
+        ),
+      ),
+      const SizedBox(height: 8),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: CompanyProfileFullView._profileNavTile(

@@ -1,7 +1,7 @@
-/// Fleet / operator thread shown on mechanic **Messages** list (UI + local demo).
+/// Job-scoped chat thread row (inbox). [jobId] === API `conversationId`.
 class MechanicMessageThread {
   const MechanicMessageThread({
-    required this.id,
+    required this.jobId,
     required this.title,
     required this.subtitle,
     this.photoUrl,
@@ -10,26 +10,14 @@ class MechanicMessageThread {
     this.phone,
   });
 
-  final String id;
+  /// Same as [jobId]; inbox list key / navigation id.
+  String get id => jobId;
+
+  final String jobId;
   final String title;
   final String subtitle;
   final String? photoUrl;
   final String preview;
   final String timeLabel;
   final String? phone;
-}
-
-/// Team member under **Employees** (stored locally until API exists).
-class MechanicEmployeeRow {
-  const MechanicEmployeeRow({
-    required this.id,
-    required this.name,
-    required this.email,
-    required this.phone,
-  });
-
-  final String id;
-  final String name;
-  final String email;
-  final String phone;
 }

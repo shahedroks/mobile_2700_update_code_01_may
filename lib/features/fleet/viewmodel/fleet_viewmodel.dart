@@ -5,7 +5,10 @@ import '../../../data/models/fleet_job_quote.dart';
 import '../../../data/models/fleet_job_summary.dart';
 import '../../../data/models/fleet_me_profile.dart';
 import '../../../data/models/fleet_track_job_detail.dart';
+import '../../../data/models/fleet_vehicle_detail.dart';
+import '../../../data/models/job_chat_models.dart';
 import '../../../data/models/vehicle.dart';
+import '../../../data/services/chat_api_service.dart';
 import '../../../data/services/fleet_api_service.dart';
 import '../../../data/services/users_api_service.dart';
 import '../../auth/viewmodel/auth_viewmodel.dart';
@@ -85,14 +88,17 @@ class FleetViewModel extends ChangeNotifier {
     this._auth, {
     FleetApiService? api,
     UsersApiService? usersApi,
+    ChatApiService? chatApi,
   })  : _api = api ?? FleetApiService(),
-        _usersApi = usersApi ?? UsersApiService() {
+        _usersApi = usersApi ?? UsersApiService(),
+        _chat = chatApi ?? ChatApiService() {
     refresh();
   }
 
   final AuthViewModel _auth;
   final FleetApiService _api;
   final UsersApiService _usersApi;
+  final ChatApiService _chat;
 
   String tab = 'dashboard';
   bool profileComplete = false;
@@ -107,10 +113,23 @@ class FleetViewModel extends ChangeNotifier {
   FleetChatSession? chatSession;
   bool showNotifications = false;
 
+  /// Profile → Messages (`GET /api/v1/chat/threads`), same inbox as mechanic.
+  List<ChatInboxThreadRow> fleetInboxThreads = [];
+  bool fleetInboxLoading = false;
+  String? fleetInboxError;
+  ChatInboxThreadRow? activeFleetInboxChat;
+
+  String threadTimeLabel(ChatInboxThreadRow row) => formatChatThreadTime(row.sortTimeIso);
+
   /// `GET /api/v1/fleet/vehicles` for Profile → My Fleet.
   List<Vehicle> fleetVehicles = const [];
   bool fleetVehiclesLoading = false;
   String? fleetVehiclesError;
+
+  /// `GET /api/v1/fleet/vehicles/:id` while Profile → vehicle detail is open.
+  FleetVehicleDetailPayload? vehicleDetailPayload;
+  bool vehicleDetailLoading = false;
+  String? vehicleDetailError;
 
   List<Vehicle> get vehicles => fleetVehicles;
 
@@ -227,16 +246,7 @@ class FleetViewModel extends ChangeNotifier {
     }
     try {
       final res = await _api.fetchFleetVehicles(accessToken: token);
-      final raw = res['data'];
-      final list = raw is List ? raw : const [];
-      final parsed = <Vehicle>[];
-      for (final item in list.whereType<Map>()) {
-        final m = Map<String, dynamic>.from(item);
-        if (m['isActive'] == false) continue;
-        parsed.add(Vehicle.fromFleetVehicleJson(m));
-      }
-      parsed.sort((a, b) => a.plate.toLowerCase().compareTo(b.plate.toLowerCase()));
-      fleetVehicles = parsed;
+      fleetVehicles = Vehicle.listFromFleetApiData(res['data']);
       fleetVehiclesError = null;
     } catch (e) {
       fleetVehiclesError = e.toString();
@@ -247,6 +257,43 @@ class FleetViewModel extends ChangeNotifier {
       if (!silent) {
         fleetVehiclesLoading = false;
       }
+      notifyListeners();
+    }
+  }
+
+  /// `GET /api/v1/fleet/vehicles/:id` (vehicle + recent jobs).
+  Future<void> loadFleetVehicleDetail(String vehicleId) async {
+    final id = vehicleId.trim();
+    if (id.isEmpty) return;
+    final token = _auth.session?.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      vehicleDetailError = 'Not signed in';
+      vehicleDetailPayload = null;
+      vehicleDetailLoading = false;
+      notifyListeners();
+      return;
+    }
+    vehicleDetailLoading = true;
+    vehicleDetailError = null;
+    notifyListeners();
+    try {
+      final res = await _api.fetchFleetVehicleById(accessToken: token, vehicleId: id);
+      final parsed = FleetVehicleDetailPayload.tryParse(res);
+      if (parsed == null) {
+        vehicleDetailPayload = null;
+        vehicleDetailError = 'Invalid vehicle response';
+      } else {
+        vehicleDetailPayload = parsed;
+        vehicleDetailError = null;
+        if (selectedVehicle?.id == parsed.vehicle.id) {
+          selectedVehicle = parsed.vehicle;
+        }
+      }
+    } catch (e) {
+      vehicleDetailError = e.toString();
+      vehicleDetailPayload = null;
+    } finally {
+      vehicleDetailLoading = false;
       notifyListeners();
     }
   }
@@ -312,7 +359,11 @@ class FleetViewModel extends ChangeNotifier {
       if (match.isNotEmpty) {
         selectedVehicle = match.first;
       }
-      notifyListeners();
+      if (tab == 'vehicle-detail' && selectedVehicle?.id == vid) {
+        await loadFleetVehicleDetail(vid);
+      } else {
+        notifyListeners();
+      }
       return null;
     } catch (e) {
       return e.toString();
@@ -606,6 +657,8 @@ class FleetViewModel extends ChangeNotifier {
       completedJobs = _parseCompletedJobs(completedRes['data']);
       trackingJobs = _parseTrackingJobs(trackingRes['data']);
       hasLoadedOnce = true;
+
+      await loadFleetVehicles(silent: true);
     } catch (e) {
       loadError = e.toString();
     } finally {
@@ -831,11 +884,49 @@ class FleetViewModel extends ChangeNotifier {
   bool get isEditingProfileForPostJob => _returnTabAfterProfileEdit == 'post-job';
 
   void setTab(String value) {
+    if (tab == 'profile-messages-chat' && value != 'profile-messages-chat') {
+      activeFleetInboxChat = null;
+    }
     tab = value;
     notifyListeners();
     if (value == 'profile') {
       loadMeProfile();
     }
+    if (value == 'profile-messages') {
+      loadFleetInboxThreads();
+    }
+  }
+
+  Future<void> loadFleetInboxThreads() async {
+    fleetInboxLoading = true;
+    fleetInboxError = null;
+    notifyListeners();
+    try {
+      final token = _auth.session?.accessToken;
+      if (token == null || token.trim().isEmpty) {
+        throw Exception('Missing access token. Please login again.');
+      }
+      final env = await _chat.fetchThreads(accessToken: token);
+      fleetInboxThreads = ChatApiService.parseThreadsEnvelope(env);
+    } catch (e) {
+      fleetInboxError = e.toString();
+    } finally {
+      fleetInboxLoading = false;
+      notifyListeners();
+    }
+  }
+
+  void openFleetInboxChat(ChatInboxThreadRow row) {
+    activeFleetInboxChat = row;
+    tab = 'profile-messages-chat';
+    notifyListeners();
+  }
+
+  void closeFleetInboxChat() {
+    activeFleetInboxChat = null;
+    tab = 'profile-messages';
+    notifyListeners();
+    loadFleetInboxThreads();
   }
 
   void openFleetEditProfile({required bool fromPostJobGate}) {
@@ -869,13 +960,19 @@ class FleetViewModel extends ChangeNotifier {
 
   void selectVehicle(Vehicle v) {
     selectedVehicle = v;
+    vehicleDetailPayload = null;
+    vehicleDetailError = null;
     showVehicles = false;
     tab = 'vehicle-detail';
     notifyListeners();
+    loadFleetVehicleDetail(v.id);
   }
 
   void clearSelectedVehicle() {
     selectedVehicle = null;
+    vehicleDetailPayload = null;
+    vehicleDetailError = null;
+    vehicleDetailLoading = false;
     tab = 'profile';
     notifyListeners();
     loadMeProfile();
@@ -948,7 +1045,12 @@ class FleetViewModel extends ChangeNotifier {
   String get bottomNavActive {
     if (tab == 'tracking-detail' || tab == 'quote-received') return 'tracking';
     if (tab == 'edit-profile' && isEditingProfileForPostJob) return 'post-job';
-    if (tab == 'edit-profile' || tab == 'payment-methods' || tab == 'vehicles' || tab == 'vehicle-detail') {
+    if (tab == 'edit-profile' ||
+        tab == 'payment-methods' ||
+        tab == 'vehicles' ||
+        tab == 'vehicle-detail' ||
+        tab == 'profile-messages' ||
+        tab == 'profile-messages-chat') {
       return 'profile';
     }
     return tab;

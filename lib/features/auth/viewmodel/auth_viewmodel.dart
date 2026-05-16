@@ -36,9 +36,11 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    final refresh = _session?.refreshToken;
-    if (refresh != null && refresh.trim().isNotEmpty) {
-      await _authRepository.logout(refreshToken: refresh);
+    if (_session != null) {
+      await _authRepository.logout(
+        accessToken: _session!.accessToken,
+        refreshToken: _session!.refreshToken,
+      );
     } else {
       await _authRepository.clearSession();
     }

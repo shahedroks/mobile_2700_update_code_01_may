@@ -2,8 +2,11 @@ import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/app_repository.dart';
 import '../../../data/repositories/api_auth_repository.dart';
+import '../../../data/models/job_chat_models.dart';
+import '../../../data/services/chat_api_service.dart';
 import '../../../data/services/company_api_service.dart';
 import '../../../data/services/users_api_service.dart';
+import '../../mechanic/models/mechanic_profile_extras.dart';
 
 // ─── Team (`GET /api/v1/company/team`) ───────────────────────────────────────
 
@@ -1524,14 +1527,16 @@ class CompanyMeSnapshot {
 // ─── ViewModel ──────────────────────────────────────────────────────────────
 
 class CompanyViewModel extends ChangeNotifier {
-  CompanyViewModel({AuthRepository? auth, CompanyApiService? api, UsersApiService? usersApi})
+  CompanyViewModel({AuthRepository? auth, CompanyApiService? api, UsersApiService? usersApi, ChatApiService? chat})
       : _auth = auth ?? ApiAuthRepository(),
         _api = api ?? CompanyApiService(),
-        _usersApi = usersApi ?? UsersApiService();
+        _usersApi = usersApi ?? UsersApiService(),
+        _chat = chat ?? ChatApiService();
 
   final AuthRepository _auth;
   final CompanyApiService _api;
   final UsersApiService _usersApi;
+  final ChatApiService _chat;
 
   String screen = 'company-dashboard';
 
@@ -1586,6 +1591,13 @@ class CompanyViewModel extends ChangeNotifier {
   bool companyMeLoading = false;
   String? companyMeError;
 
+  /// Profile → Messages (`GET /api/v1/chat/threads`).
+  List<MechanicMessageThread> companyMessageThreads = [];
+  bool companyMessageThreadsLoading = false;
+  String? companyMessageThreadsError;
+
+  MechanicMessageThread? activeCompanyChatPeer;
+
   int get jobsTabBadge {
     final fromTeam = teamMeta?.jobsNavBadgeCount;
     if (fromTeam != null) return fromTeam;
@@ -1595,12 +1607,67 @@ class CompanyViewModel extends ChangeNotifier {
   }
 
   void setScreen(String s) {
+    if (screen == 'company-messages-chat' && s != 'company-messages-chat') {
+      activeCompanyChatPeer = null;
+    }
     screen = s;
+    notifyListeners();
+    if (s == 'company-messages') {
+      loadCompanyMessageThreads();
+    }
+  }
+
+  Future<void> loadCompanyMessageThreads() async {
+    companyMessageThreadsLoading = true;
+    companyMessageThreadsError = null;
+    notifyListeners();
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) {
+        throw Exception('Missing access token. Please login again.');
+      }
+      final env = await _chat.fetchThreads(accessToken: token);
+      final rows = ChatApiService.parseThreadsEnvelope(env);
+      companyMessageThreads = rows
+          .map(
+            (r) => MechanicMessageThread(
+              jobId: r.conversationId,
+              title: r.title,
+              subtitle: r.subtitle,
+              photoUrl: r.counterpartyPhotoUrl,
+              preview: r.preview,
+              timeLabel: formatChatThreadTime(r.sortTimeIso),
+            ),
+          )
+          .toList();
+    } catch (e) {
+      companyMessageThreadsError = e.toString();
+    } finally {
+      companyMessageThreadsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  void openCompanyMessageChat(MechanicMessageThread thread) {
+    activeCompanyChatPeer = thread;
+    screen = 'company-messages-chat';
+    notifyListeners();
+  }
+
+  void closeCompanyMessageChat() {
+    activeCompanyChatPeer = null;
+    screen = 'company-messages';
     notifyListeners();
   }
 
   String get bottomResolved {
-    if (screen == 'company-earnings' || screen == 'company-edit-profile') return 'company-profile';
+    if (screen == 'company-earnings' ||
+        screen == 'company-edit-profile' ||
+        screen == 'company-messages' ||
+        screen == 'company-messages-chat') {
+      return 'company-profile';
+    }
     return screen;
   }
 
@@ -1675,7 +1742,6 @@ class CompanyViewModel extends ChangeNotifier {
     required double amount,
     required int etaMinutes,
     String notes = '',
-    String availabilityType = 'NOW',
   }) async {
     final session = await _auth.getSession();
     final token = session?.accessToken;
@@ -1687,7 +1753,6 @@ class CompanyViewModel extends ChangeNotifier {
       amount: amount,
       etaMinutes: etaMinutes,
       notes: notes.trim(),
-      availabilityType: availabilityType,
     );
     await loadCompanyFeed();
     await loadMyQuotes();

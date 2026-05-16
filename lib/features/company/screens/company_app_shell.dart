@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/constants/app_assets.dart';
+import '../../../data/repositories/app_repository.dart';
+import '../../../widgets/api_job_chat_screen.dart';
+import '../../auth/viewmodel/auth_viewmodel.dart';
 import '../viewmodel/company_viewmodel.dart';
 import 'company_management_screens.dart';
+import 'company_messages_screen.dart';
 
 class CompanyAppShell extends StatelessWidget {
   const CompanyAppShell({super.key});
@@ -11,7 +16,7 @@ class CompanyAppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => CompanyViewModel(),
+      create: (ctx) => CompanyViewModel(auth: ctx.read<AuthRepository>()),
       child: const _CompanyScaffold(),
     );
   }
@@ -127,6 +132,44 @@ class _CompanyBody extends StatelessWidget {
         return const CompanyTeamManagementView();
       case 'company-earnings':
         return CompanyEarningsView(onBack: () => vm.setScreen('company-profile'));
+      case 'company-messages':
+        return CompanyMessagesListPage(onBack: () => vm.setScreen('company-profile'));
+      case 'company-messages-chat':
+        final peer = vm.activeCompanyChatPeer;
+        if (peer == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) vm.setScreen('company-messages');
+          });
+          return const ColoredBox(color: AppColors.bg, child: SizedBox.expand());
+        }
+        final token = context.watch<AuthViewModel>().session?.accessToken;
+        if (token == null || token.trim().isEmpty) {
+          return ColoredBox(
+            color: AppColors.bg,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Session expired. Sign in again.', style: TextStyle(color: AppColors.textMuted)),
+                    TextButton(onPressed: () => vm.closeCompanyMessageChat(), child: const Text('Back')),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+        return ApiJobChatScreen(
+          accessToken: token,
+          jobId: peer.jobId,
+          headerTitle: peer.title,
+          headerSubtitle: peer.subtitle,
+          headerAvatarUrl: peer.photoUrl,
+          peerPhone: peer.phone,
+          onClose: () => vm.closeCompanyMessageChat(),
+          avatarFallbackAsset: AppAssets.mechanicPortrait,
+        );
       case 'company-profile':
         return const CompanyProfileFullView();
       case 'company-edit-profile':
@@ -333,9 +376,14 @@ class _CompanyDashboardViewState extends State<_CompanyDashboardView> {
     final showFatalDashboardErr =
         vm.dashboardError != null && vm.dashboard == null && !vm.dashboardLoading;
 
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
+    return RefreshIndicator(
+      color: AppColors.primary,
+      backgroundColor: AppColors.bg,
+      onRefresh: vm.loadDashboard,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        children: [
         Container(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
           decoration: const BoxDecoration(
@@ -619,6 +667,7 @@ class _CompanyDashboardViewState extends State<_CompanyDashboardView> {
           ),
         ),
       ],
+    ),
     );
   }
 }
@@ -836,11 +885,15 @@ class _CompanyJobFeedViewState extends State<_CompanyJobFeedView> {
   }
 
   void _openQuoteSheet(CompanyFeedJob job) {
+    final vm = context.read<CompanyViewModel>();
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _CoQuoteSubmitSheet(job: job, onClose: () => Navigator.pop(ctx)),
+      builder: (ctx) => ChangeNotifierProvider<CompanyViewModel>.value(
+        value: vm,
+        child: _CoQuoteSubmitSheet(job: job, onClose: () => Navigator.pop(ctx)),
+      ),
     );
   }
 

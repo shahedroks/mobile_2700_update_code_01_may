@@ -370,9 +370,13 @@ class _FleetTrackJobDetailViewState extends State<FleetTrackJobDetailView> with 
                       FleetChatSession(
                         mechanicName: d.mechanicName,
                         mechanicPhone: phone.isEmpty ? null : phone,
-                        mechanicPhotoUrl: AppAssets.mechanicPortrait,
+                        mechanicPhotoUrl: () {
+                          final u = d.mechanicProfilePhotoUrl?.trim();
+                          return (u != null && u.isNotEmpty) ? u : AppAssets.mechanicPortrait;
+                        }(),
                         jobCode: d.jobCode,
                         truckLine: d.subtitle,
+                        jobId: d.backendId.trim().isEmpty ? null : d.backendId.trim(),
                       ),
                     );
               },
@@ -909,11 +913,21 @@ class _FleetTrackJobDetailViewState extends State<FleetTrackJobDetailView> with 
                               children: [
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
-                                  child: CachedNetworkImage(
-                                    imageUrl: AppAssets.mechanicPortrait,
+                                  child: SizedBox(
                                     width: 48,
                                     height: 48,
-                                    fit: BoxFit.cover,
+                                    child: CachedNetworkImage(
+                                      imageUrl: (d.mechanicProfilePhotoUrl != null &&
+                                              d.mechanicProfilePhotoUrl!.trim().isNotEmpty)
+                                          ? d.mechanicProfilePhotoUrl!.trim()
+                                          : AppAssets.mechanicPortrait,
+                                      fit: BoxFit.cover,
+                                      placeholder: (_, __) => Container(color: AppColors.card2),
+                                      errorWidget: (_, __, ___) => CachedNetworkImage(
+                                        imageUrl: AppAssets.mechanicPortrait,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),

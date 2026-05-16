@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -18,7 +20,9 @@ import '../../../data/models/mechanic_job_detail.dart';
 import '../../../data/models/mechanic_me_profile.dart';
 import '../../../data/repositories/app_repository.dart';
 import '../../../routes/app_routes.dart';
+import '../../../widgets/job_location_google_map_preview.dart';
 import '../../../widgets/truckfix_map_preview.dart';
+import '../../../widgets/api_job_chat_screen.dart';
 import '../../auth/viewmodel/auth_viewmodel.dart';
 import '../../categories/job_taxonomy.dart';
 import '../viewmodel/mechanic_viewmodel.dart';
@@ -117,17 +121,34 @@ class _MechBody extends StatelessWidget {
           });
           return const ColoredBox(color: AppColors.bg, child: SizedBox.expand());
         }
-        return MechanicPeerChatScreen(
-          thread: peer,
-          onBack: () => vm.closeMessageChat(),
+        final token = context.watch<AuthViewModel>().session?.accessToken;
+        if (token == null || token.trim().isEmpty) {
+          return ColoredBox(
+            color: AppColors.bg,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Session expired. Sign in again.', style: TextStyle(color: AppColors.textMuted)),
+                    TextButton(onPressed: () => vm.closeMessageChat(), child: const Text('Back')),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+        return ApiJobChatScreen(
+          accessToken: token,
+          jobId: peer.jobId,
+          headerTitle: peer.title,
+          headerSubtitle: peer.subtitle,
+          headerAvatarUrl: peer.photoUrl,
+          peerPhone: peer.phone,
+          onClose: () => vm.closeMessageChat(),
+          avatarFallbackAsset: AppAssets.mechanicPortrait,
         );
-      case 'profile-employees':
-        return MechanicEmployeesListPage(
-          onBack: () => vm.setTab('profile'),
-          onAdd: () => vm.setTab('profile-employees-add'),
-        );
-      case 'profile-employees-add':
-        return MechanicAddEmployeePage(onBack: () => vm.setTab('profile-employees'));
       default:
         return const _JobFeedPage();
     }
@@ -593,8 +614,8 @@ class _JobFeedPageState extends State<_JobFeedPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final vm = context.read<MechanicViewModel>();
-      if (vm.online) vm.loadJobFeed();
+      if (!mounted) return;
+      context.read<MechanicViewModel>().loadJobFeed();
     });
   }
 
@@ -602,7 +623,7 @@ class _JobFeedPageState extends State<_JobFeedPage> {
     final vm = context.read<MechanicViewModel>();
     try {
       await vm.toggleOnline();
-      if (vm.online && mounted) vm.loadJobFeed();
+      if (mounted) await vm.loadJobFeed();
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -621,9 +642,15 @@ class _JobFeedPageState extends State<_JobFeedPage> {
     final vm = context.watch<MechanicViewModel>();
     final jobs = vm.online ? _filtered(vm) : <JobOffer>[];
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-      children: [
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: () async {
+        await vm.loadJobFeed();
+      },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        children: [
         Row(
           children: [
             const Expanded(
@@ -772,6 +799,7 @@ class _JobFeedPageState extends State<_JobFeedPage> {
         else
           ...jobs.map((j) => _jobCard(context, j)),
       ],
+    ),
     );
   }
 
@@ -1973,6 +2001,7 @@ class _QuoteDetailPageState extends State<_QuoteDetailPage> {
     final scheduledOn = _availability == 'Scheduled';
     final days = _days;
     final hasRoute = d.mechanicLngLat != null && d.jobDestinationLngLat != null;
+    final mapBreakdown = d.mapBreakdownLngLat;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2089,7 +2118,16 @@ class _QuoteDetailPageState extends State<_QuoteDetailPage> {
                     children: [
                       _sectionTitle('LOCATION'),
                       const SizedBox(height: 12),
-                      TruckFixMapPreview(height: 130, showRoute: hasRoute, liveLabel: true),
+                      if (!kIsWeb && mapBreakdown != null)
+                        JobLocationGoogleMapPreview(
+                          height: 130,
+                          lat: mapBreakdown.lat,
+                          lng: mapBreakdown.lng,
+                          mechanicLat: hasRoute ? d.mechanicLngLat?.lat : null,
+                          mechanicLng: hasRoute ? d.mechanicLngLat?.lng : null,
+                        )
+                      else
+                        TruckFixMapPreview(height: 130, showRoute: hasRoute, liveLabel: true),
                       const SizedBox(height: 12),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4189,7 +4227,8 @@ class _MechanicJobTrackerPageState extends State<MechanicJobTrackerPage> {
     final completed = vm.jobTrackerDetail?.showCompletedSummary ?? false;
     final showMapBlock = st <= 2 && !completed;
     final d = vm.jobTrackerDetail;
-    final hasRoute = d?.mechanicLngLat != null && d?.jobOriginLngLat != null;
+    final hasRoute = d?.mechanicLngLat != null && d?.jobDestinationLngLat != null;
+    final mapBreakdown = d?.mapBreakdownLngLat;
 
     return Stack(
       children: [
@@ -4205,7 +4244,16 @@ class _MechanicJobTrackerPageState extends State<MechanicJobTrackerPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          TruckFixMapPreview(height: 125, showRoute: hasRoute, liveLabel: false),
+                          if (!kIsWeb && mapBreakdown != null)
+                            JobLocationGoogleMapPreview(
+                              height: 125,
+                              lat: mapBreakdown.lat,
+                              lng: mapBreakdown.lng,
+                              mechanicLat: d?.mechanicLngLat?.lat,
+                              mechanicLng: d?.mechanicLngLat?.lng,
+                            )
+                          else
+                            TruckFixMapPreview(height: 125, showRoute: hasRoute, liveLabel: false),
                           const SizedBox(height: 12),
                           _jobCard(vm, orangeAccent: false),
                           const SizedBox(height: 12),
@@ -5942,8 +5990,8 @@ class _MechPaymentState extends State<_MechPayment> {
   Future<void> _saveCard() async {
     final messenger = ScaffoldMessenger.maybeOf(context);
     final digits = _digitsOnly(_cardNumCtrl.text);
-    if (digits.length < 4) {
-      messenger?.showSnackBar(const SnackBar(content: Text('Enter a valid card number (at least 4 digits).')));
+    if (digits.length < 13 || digits.length > 16) {
+      messenger?.showSnackBar(const SnackBar(content: Text('Enter a valid card number (13–16 digits).')));
       return;
     }
     final last4 = digits.substring(digits.length - 4);
@@ -6019,6 +6067,10 @@ class _MechPaymentState extends State<_MechPayment> {
           TextField(
             controller: _cardNumCtrl,
             keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(16),
+            ],
             style: const TextStyle(color: Colors.white, fontSize: 13),
             decoration: _inputDeco('1234 5678 9012 3456'),
           ),
@@ -6384,6 +6436,7 @@ class _MechanicProfileState extends State<_MechanicProfile> {
   bool _notifJobUpdates = true;
   bool _notifPayments = true;
   bool _notifSystem = false;
+  bool _notifApp = false;
 
   @override
   void initState() {
@@ -6400,7 +6453,9 @@ class _MechanicProfileState extends State<_MechanicProfile> {
         _notifNewJobs = profile.notifNewBreakdownJobs;
         _notifJobUpdates = profile.notifJobAcceptedDeclined;
         _notifPayments = profile.notifPaymentReceived;
-        _notifSystem = profile.notifSystemAlerts;
+        final sysApp = profile.notifSystemAlerts || profile.notifAppAlerts;
+        _notifSystem = sysApp;
+        _notifApp = sysApp;
       });
     };
     _vm.addListener(_vmListen);
@@ -6422,7 +6477,8 @@ class _MechanicProfileState extends State<_MechanicProfile> {
         newBreakdownJobs: _notifNewJobs,
         jobAcceptedDeclined: _notifJobUpdates,
         paymentReceived: _notifPayments,
-        systemAndAppAlerts: _notifSystem,
+        systemAlerts: _notifSystem,
+        appAlerts: _notifApp,
       );
     } catch (e) {
       if (!mounted) return;
@@ -6719,6 +6775,13 @@ class _MechanicProfileState extends State<_MechanicProfile> {
             label: const Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.6)),
           ),
         ),
+        const SizedBox(height: 12),
+        profileShortcut(
+          icon: Icons.chat_bubble_outline_rounded,
+          title: 'Messages',
+          subtitle: 'Chats with fleets, operators & TruckFix support',
+          onTap: () => vm.setTab('profile-messages'),
+        ),
         const SizedBox(height: 14),
 
         // Rates & Coverage
@@ -6916,7 +6979,11 @@ class _MechanicProfileState extends State<_MechanicProfile> {
                         on: _notifSystem,
                         locked: vm.meProfilePatchBusy,
                         onToggle: () {
-                          setState(() => _notifSystem = !_notifSystem);
+                          setState(() {
+                            final next = !_notifSystem;
+                            _notifSystem = next;
+                            _notifApp = next;
+                          });
                           _persistNotificationSettings();
                         },
                       ),
@@ -7008,20 +7075,6 @@ class _MechanicProfileState extends State<_MechanicProfile> {
           ),
         ),
         const SizedBox(height: 12),
-        profileShortcut(
-          icon: Icons.chat_bubble_outline_rounded,
-          title: 'Messages',
-          subtitle: 'Chats with fleets, operators & TruckFix support',
-          onTap: () => vm.setTab('profile-messages'),
-        ),
-        const SizedBox(height: 10),
-        profileShortcut(
-          icon: Icons.groups_outlined,
-          title: 'Employees',
-          subtitle: 'Invite staff and manage workshop team logins',
-          onTap: () => vm.setTab('profile-employees'),
-        ),
-        const SizedBox(height: 10),
         profileShortcut(
           icon: Icons.trending_up,
           title: 'Earnings & Invoices',

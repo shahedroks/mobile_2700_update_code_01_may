@@ -115,6 +115,22 @@ class MechanicJobDetailParsed {
     return null;
   }
 
+  /// Coordinates for map UI: breakdown/destination, then origin, then root `location`.
+  ({double lng, double lat})? get mapBreakdownLngLat =>
+      jobDestinationLngLat ?? jobOriginLngLat ?? _locationRootCoords;
+
+  ({double lng, double lat})? get _locationRootCoords {
+    final loc = raw['location'] as Map<String, dynamic>?;
+    if (loc == null) return null;
+    final c = loc['coordinates'];
+    if (c is List && c.length >= 2) {
+      final lng = (c[0] as num?)?.toDouble();
+      final lat = (c[1] as num?)?.toDouble();
+      if (lng != null && lat != null) return (lng: lng, lat: lat);
+    }
+    return null;
+  }
+
   String get description => (raw['description'] as String?)?.trim() ?? '';
 
   /// Human-readable issue category (e.g. `FLAT_DAMAGED_TYRE` → words).
@@ -150,7 +166,7 @@ class MechanicJobDetailParsed {
         .toList(growable: false);
   }
 
-  /// Prefer `location.address`, then `map.destination.address`.
+  /// Prefer `location.address`, then `map.destination.address`, else formatted coords.
   String get locationDisplayAddress {
     final loc = raw['location'] as Map<String, dynamic>?;
     final a = (loc?['address'] as String?)?.trim();
@@ -159,6 +175,8 @@ class MechanicJobDetailParsed {
     final dest = map?['destination'] as Map<String, dynamic>?;
     final da = (dest?['address'] as String?)?.trim();
     if (da != null && da.isNotEmpty) return da;
+    final p = mapBreakdownLngLat;
+    if (p != null) return '${p.lat.toStringAsFixed(5)}, ${p.lng.toStringAsFixed(5)}';
     return '—';
   }
 

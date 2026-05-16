@@ -29,7 +29,10 @@ class MechanicMeProfile {
     required this.notifJobAcceptedDeclined,
     required this.notifPaymentReceived,
     required this.notifSystemAlerts,
+    required this.notifAppAlerts,
     required this.paymentCardLabel,
+    required this.employerCompanyName,
+    required this.jobsThisWeek,
   });
 
   /// `data.updatedAt` — bumps when syncing local UI state from server.
@@ -72,9 +75,16 @@ class MechanicMeProfile {
   final bool notifJobAcceptedDeclined;
   final bool notifPaymentReceived;
   final bool notifSystemAlerts;
+  final bool notifAppAlerts;
 
   /// `paymentSummary.cardLabel` for secondary profile actions.
   final String? paymentCardLabel;
+
+  /// Populated for mechanic employees from `companyMembership.company` when expanded.
+  final String employerCompanyName;
+
+  /// From `performance` when API exposes a weekly count (else `0`).
+  final int jobsThisWeek;
 
   static int _toInt(dynamic v) {
     if (v == null) return 0;
@@ -113,21 +123,36 @@ class MechanicMeProfile {
     return s.isEmpty ? null : s;
   }
 
+  /// Same idea as [FleetMeProfileUi.fromApiBody]: some backends wrap the user in
+  /// `{ "data": { ... } }`, others return the user object at the root of the JSON.
+  static Map<String, dynamic> _unwrapData(Map<String, dynamic> envelope) {
+    final data = envelope['data'];
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return envelope;
+  }
+
+  static Map<String, dynamic> _asMap(dynamic v) {
+    if (v is Map<String, dynamic>) return v;
+    if (v is Map) return Map<String, dynamic>.from(v);
+    return const {};
+  }
+
   factory MechanicMeProfile.fromUsersMeEnvelope(Map<String, dynamic> envelope) {
-    final data = (envelope['data'] as Map<String, dynamic>?) ?? {};
-    final mp = (data['mechanicProfile'] as Map<String, dynamic>?) ?? {};
-    final perf = (data['performance'] as Map<String, dynamic>?) ?? {};
-    final prefs = (data['preferences'] as Map<String, dynamic>?) ?? {};
-    final notif = (prefs['notifications'] as Map<String, dynamic>?) ?? {};
-    final stats = (mp['stats'] as Map<String, dynamic>?) ?? {};
-    final rating = (mp['rating'] as Map<String, dynamic>?) ?? {};
-    final pay = (data['paymentSummary'] as Map<String, dynamic>?) ?? {};
+    final data = _unwrapData(envelope);
+    final mp = _asMap(data['mechanicProfile'] ?? envelope['mechanicProfile']);
+    final perf = _asMap(data['performance'] ?? envelope['performance']);
+    final prefs = _asMap(data['preferences'] ?? envelope['preferences']);
+    final notif = _asMap(prefs['notifications']);
+    final stats = _asMap(mp['stats']);
+    final rating = _asMap(mp['rating']);
+    final pay = _asMap(data['paymentSummary'] ?? envelope['paymentSummary']);
 
     final perfJobs = perf['jobsDone'];
     final statJobs = stats['jobsDone'];
     final jobsDone = perfJobs != null ? _toInt(perfJobs) : _toInt(statJobs);
 
-    final perfRating = perf['avgRating'];
+    final perfRating = perf['avgRating'] ?? perf['averageRating'] ?? perf['average'];
     final avgRating = perfRating != null ? _toDouble(perfRating) : _toDouble(rating['average']);
 
     final perfRc = perf['ratingCount'];
@@ -145,7 +170,7 @@ class MechanicMeProfile {
       emergencyRate = num.tryParse('$emergencyRaw');
     }
 
-    final push = prefs['pushEnabled'] == true || data['pushEnabled'] == true;
+    final push = prefs['pushEnabled'] == true || data['pushEnabled'] == true || envelope['pushEnabled'] == true;
     final alertR = () {
       final a = _toInt(prefs['alertRadiusMiles']);
       if (a > 0) return a;
@@ -154,15 +179,37 @@ class MechanicMeProfile {
     }();
     final alertRadiusMiles = alertR > 0 ? alertR : 25;
 
-    final email = _trimStr(data['email']) ?? _trimStr(mp['email']) ?? '';
+    final email = _trimStr(data['email']) ?? _trimStr(mp['email']) ?? _trimStr(envelope['email']) ?? '';
     final phone = _trimStr(data['phone']) ?? _trimStr(mp['phone']) ?? _trimStr(mp['phoneNumber']) ?? '';
 
+    var employerCompanyName = '';
+    final cm = _asMap(data['companyMembership'] ?? envelope['companyMembership']);
+    final co = cm['company'];
+    final coMap = _asMap(co);
+    if (coMap.isNotEmpty) {
+      employerCompanyName = _trimStr(coMap['companyName']) ?? _trimStr(coMap['name']) ?? _trimStr(coMap['tradingName']) ?? '';
+    }
+    if (employerCompanyName.isEmpty) {
+      employerCompanyName = _trimStr(data['employerCompanyName']) ?? '';
+    }
+
+    final jobsThisWeek = _toInt(
+      perf['jobsThisWeek'] ?? perf['jobsCompletedThisWeek'] ?? perf['completedThisWeek'],
+    );
+
+    final displayName = _trimStr(mp['displayName']) ??
+        _trimStr(data['displayName']) ??
+        _trimStr(data['fullName']) ??
+        _trimStr(envelope['displayName']) ??
+        _trimStr(envelope['fullName']) ??
+        'Mechanic';
+
     return MechanicMeProfile(
-      userUpdatedAt: _trimStr(data['updatedAt']) ?? '',
-      displayName: _trimStr(mp['displayName']) ?? 'Mechanic',
+      userUpdatedAt: _trimStr(data['updatedAt']) ?? _trimStr(envelope['updatedAt']) ?? '',
+      displayName: displayName,
       email: email,
       phone: phone,
-      profilePhotoUrl: _trimStr(mp['profilePhotoUrl']),
+      profilePhotoUrl: _trimStr(mp['profilePhotoUrl']) ?? _trimStr(data['profilePhotoUrl']),
       jobsDone: jobsDone,
       avgRating: avgRating,
       ratingCount: ratingCount,
@@ -187,9 +234,11 @@ class MechanicMeProfile {
       notifNewBreakdownJobs: notif['newBreakdownJobs'] == true,
       notifJobAcceptedDeclined: notif['jobAcceptedDeclined'] == true,
       notifPaymentReceived: notif['paymentReceived'] == true,
-      notifSystemAlerts:
-          notif['systemAlerts'] == true || notif['systemAndAppAlerts'] == true,
+      notifSystemAlerts: notif['systemAlerts'] == true || notif['systemAndAppAlerts'] == true,
+      notifAppAlerts: notif['appAlerts'] == true,
       paymentCardLabel: _trimStr(pay['cardLabel']),
+      employerCompanyName: employerCompanyName,
+      jobsThisWeek: jobsThisWeek,
     );
   }
 

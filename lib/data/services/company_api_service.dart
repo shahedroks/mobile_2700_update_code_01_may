@@ -47,19 +47,19 @@ class CompanyApiService {
   }
 
   /// Submit a quote for a published job (`POST /api/v1/jobs/:jobId/quotes`).
+  ///
+  /// Body matches API: `amount`, `notes`, `etaMinutes` (see Postman).
   Future<Map<String, dynamic>> postJobQuote({
     required String accessToken,
     required String jobId,
     required num amount,
     required int etaMinutes,
     String notes = '',
-    String availabilityType = 'NOW',
   }) async {
-    final uri = Uri.parse('$_baseUrl/api/v1/jobs/${Uri.encodeComponent(jobId)}/quotes');
+    final uri = Uri.parse('$_baseUrl${ApiConstants.jobsPath}/${Uri.encodeComponent(jobId)}/quotes');
     final payload = <String, dynamic>{
       'amount': amount,
       'notes': notes,
-      'availabilityType': availabilityType,
       'etaMinutes': etaMinutes,
     };
     final res = await _client.post(

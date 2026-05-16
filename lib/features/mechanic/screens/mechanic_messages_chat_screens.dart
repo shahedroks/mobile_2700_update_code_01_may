@@ -30,11 +30,34 @@ class MechanicMessagesListPage extends StatelessWidget {
         children: [
           _SubScreenHeader(title: 'Messages', onBack: onBack),
           Expanded(
-            child: threads.isEmpty
-                ? const Center(
-                    child: Text('No conversations yet', style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
-                  )
-                : ListView.separated(
+            child: vm.messageThreadsLoading
+                ? const Center(child: CircularProgressIndicator())
+                : vm.messageThreadsError != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                vm.messageThreadsError!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                              ),
+                              const SizedBox(height: 12),
+                              TextButton(
+                                onPressed: () => vm.loadMessageThreads(),
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : threads.isEmpty
+                        ? const Center(
+                            child: Text('No conversations yet', style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
+                          )
+                        : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                     itemCount: threads.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -454,254 +477,6 @@ class _MechanicPeerChatScreenState extends State<MechanicPeerChatScreen> {
             ),
         ],
       ),
-    );
-  }
-}
-
-// ─── Employees ─────────────────────────────────────────────────────────────
-
-class MechanicEmployeesListPage extends StatelessWidget {
-  const MechanicEmployeesListPage({super.key, required this.onBack, required this.onAdd});
-
-  final VoidCallback onBack;
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    final vm = context.watch<MechanicViewModel>();
-    final list = vm.mechanicEmployees;
-
-    return ColoredBox(
-      color: AppColors.bg,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _SubScreenHeader(
-            title: 'Employees',
-            onBack: onBack,
-            trailing: TextButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.person_add_alt_1_rounded, color: AppColors.primary, size: 20),
-              label: const Text('Add', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 13)),
-            ),
-          ),
-          Expanded(
-            child: list.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.groups_outlined, size: 48, color: AppColors.textHint.withValues(alpha: 0.8)),
-                          const SizedBox(height: 12),
-                          const Text('No employees yet', style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
-                          const SizedBox(height: 8),
-                          TextButton(onPressed: onAdd, child: const Text('Add your first employee')),
-                        ],
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    itemCount: list.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) {
-                      final e = list[i];
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppColors.card,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
-                              ),
-                              child: const Icon(Icons.engineering_outlined, color: AppColors.primary, size: 22),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(e.name, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
-                                  const SizedBox(height: 4),
-                                  Text(e.email, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                                  const SizedBox(height: 4),
-                                  Text(e.phone, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class MechanicAddEmployeePage extends StatefulWidget {
-  const MechanicAddEmployeePage({super.key, required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  State<MechanicAddEmployeePage> createState() => _MechanicAddEmployeePageState();
-}
-
-class _MechanicAddEmployeePageState extends State<MechanicAddEmployeePage> {
-  final _name = TextEditingController();
-  final _email = TextEditingController();
-  final _phone = TextEditingController();
-  final _password = TextEditingController();
-  bool _saving = false;
-  bool _obscurePassword = true;
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _email.dispose();
-    _phone.dispose();
-    _password.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final name = _name.text.trim();
-    final email = _email.text.trim();
-    final phone = _phone.text.trim();
-    final password = _password.text;
-    if (name.isEmpty || email.isEmpty || phone.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter name, email, phone, and password')),
-      );
-      return;
-    }
-    setState(() => _saving = true);
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-    if (!mounted) return;
-    context.read<MechanicViewModel>().addMechanicEmployee(
-          name: name,
-          email: email,
-          phone: phone,
-          password: password,
-        );
-    setState(() => _saving = false);
-    widget.onBack();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: AppColors.bg,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _SubScreenHeader(title: 'Add employee', onBack: widget.onBack),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _fieldLabel('FULL NAME'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _name,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _inputDeco(hint: 'e.g. James Mitchell'),
-                  ),
-                  const SizedBox(height: 18),
-                  _fieldLabel('EMAIL'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    autocorrect: false,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _inputDeco(hint: 'name@company.co.uk'),
-                  ),
-                  const SizedBox(height: 18),
-                  _fieldLabel('PHONE'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _phone,
-                    keyboardType: TextInputType.phone,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _inputDeco(hint: '+44 7700 900000'),
-                  ),
-                  const SizedBox(height: 18),
-                  _fieldLabel('PASSWORD'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _password,
-                    obscureText: _obscurePassword,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _inputDeco(hint: 'Create a login password').copyWith(
-                      suffixIcon: IconButton(
-                        tooltip: _obscurePassword ? 'Show password' : 'Hide password',
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                        icon: Icon(
-                          _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                          color: AppColors.textHint,
-                          size: 22,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    height: 48,
-                    child: FilledButton(
-                      onPressed: _saving ? null : _save,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: _saving
-                          ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.black))
-                          : const Text('SAVE EMPLOYEE', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.1)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static Widget _fieldLabel(String t) {
-    return Text(
-      t,
-      style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.95), fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.1),
-    );
-  }
-
-  static InputDecoration _inputDeco({required String hint}) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: TextStyle(color: AppColors.textHint.withValues(alpha: 0.7)),
-      filled: true,
-      fillColor: AppColors.card2,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border2)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border2)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.55))),
     );
   }
 }

@@ -19,8 +19,8 @@ abstract class AuthRepository {
     required UserRole roleHint,
   });
 
-  /// Optional backend logout (best-effort).
-  Future<void> logout({required String refreshToken});
+  /// Optional backend logout (best-effort). Send [accessToken] as `Authorization: Bearer` when present.
+  Future<void> logout({String? accessToken, String? refreshToken});
 
   /// Fleet operator registration.
   Future<void> registerFleetOperator({
@@ -51,7 +51,21 @@ abstract class AuthRepository {
     String? rateCurrency,
     num? coverageRadius,
     String? profilePhotoUrl,
+    String? profilePhotoPath,
     List<String>? skills,
+  });
+
+  /// Company mechanic employee (invite) — `POST /api/v1/auth/register` with `role: MECHANIC_EMPLOYEE`.
+  Future<void> registerMechanicEmployee({
+    required String email,
+    required String password,
+    required String confirmPassword,
+    required String inviteToken,
+    required String fullName,
+    required String phone,
+    required String displayName,
+    required String baseLocationText,
+    required List<String> skills,
   });
 }
 
@@ -84,7 +98,7 @@ class MemoryAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> logout({required String refreshToken}) async {
+  Future<void> logout({String? accessToken, String? refreshToken}) async {
     await clearSession();
   }
 
@@ -119,7 +133,23 @@ class MemoryAuthRepository implements AuthRepository {
     String? rateCurrency,
     num? coverageRadius,
     String? profilePhotoUrl,
+    String? profilePhotoPath,
     List<String>? skills,
+  }) async {
+    // No-op for prototype mode.
+  }
+
+  @override
+  Future<void> registerMechanicEmployee({
+    required String email,
+    required String password,
+    required String confirmPassword,
+    required String inviteToken,
+    required String fullName,
+    required String phone,
+    required String displayName,
+    required String baseLocationText,
+    required List<String> skills,
   }) async {
     // No-op for prototype mode.
   }

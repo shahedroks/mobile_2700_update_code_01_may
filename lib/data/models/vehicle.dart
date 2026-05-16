@@ -16,6 +16,7 @@ class Vehicle {
     this.model,
     this.year,
     this.vin,
+    this.currentMileageKm,
   });
 
   final String id;
@@ -40,6 +41,9 @@ class Vehicle {
   final int? year;
   final String? vin;
 
+  /// From fleet vehicle APIs when present (`currentMileageKm`).
+  final int? currentMileageKm;
+
   static String _formatShortDateUtc(String? iso) {
     if (iso == null || iso.trim().isEmpty) return '';
     try {
@@ -57,6 +61,20 @@ class Vehicle {
     return s.isEmpty ? null : s;
   }
 
+  /// Parses `GET /api/v1/fleet/vehicles` envelope `data` (array of vehicle objects).
+  static List<Vehicle> listFromFleetApiData(dynamic data, {bool activeOnly = true}) {
+    if (data is! List) return const [];
+    final out = <Vehicle>[];
+    for (final e in data) {
+      if (e is! Map) continue;
+      final m = Map<String, dynamic>.from(e);
+      if (activeOnly && m['isActive'] == false) continue;
+      out.add(Vehicle.fromFleetVehicleJson(m));
+    }
+    out.sort((a, b) => a.plate.toLowerCase().compareTo(b.plate.toLowerCase()));
+    return out;
+  }
+
   /// One row from `GET /api/v1/fleet/vehicles` `data[]`.
   factory Vehicle.fromFleetVehicleJson(Map<String, dynamic> json) {
     final id = (_trimOrNull(json['_id'])) ?? '';
@@ -66,6 +84,8 @@ class Vehicle {
     final type = _trimOrNull(json['type']);
     final vin = _trimOrNull(json['vin']);
     final year = json['year'] is num ? (json['year'] as num).toInt() : int.tryParse('${json['year']}');
+    final kmRaw = json['currentMileageKm'];
+    final int? currentMileageKm = kmRaw is num ? kmRaw.toInt() : int.tryParse('$kmRaw');
 
     final labelParts = <String>[
       if (make != null) make,
@@ -93,6 +113,7 @@ class Vehicle {
       model: model,
       year: year,
       vin: vin,
+      currentMileageKm: currentMileageKm,
     );
   }
 }

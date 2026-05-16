@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants/api_constants.dart';
@@ -76,6 +78,8 @@ class ApiAuthRepository implements AuthRepository {
       'mechanic' => UserRole.mechanic,
       'company' => UserRole.company,
       'employee' => UserRole.employee,
+      // Backend: company-invited workshop mechanic (`POST /auth/register` with role MECHANIC_EMPLOYEE).
+      'mechanic_employee' => UserRole.employee,
       _ => null,
     };
   }
@@ -157,7 +161,8 @@ class ApiAuthRepository implements AuthRepository {
         _pickString(user, ['email']) ??
         email;
     final name = _pickString(rootOrData, ['name', 'displayName']) ??
-        _pickString(user, ['name', 'displayName']);
+        _pickString(user, ['name', 'displayName']) ??
+        _pickString(mechanicProfile, ['displayName', 'display_name', 'fullName', 'full_name']);
 
     final session = Session(
       email: resolvedEmail,
@@ -172,17 +177,35 @@ class ApiAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> logout({required String refreshToken}) async {
+  Future<void> logout({String? accessToken, String? refreshToken}) async {
     final uri = Uri.parse('$_baseUrl${ApiConstants.authLogoutPath}');
     try {
-      await _client.post(
-        uri,
-        headers: const {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({'refreshToken': refreshToken}),
-      );
+      final bearer = accessToken?.trim();
+      final rt = refreshToken?.trim();
+      if (bearer != null && bearer.isNotEmpty) {
+        final body = <String, dynamic>{};
+        if (rt != null && rt.isNotEmpty) {
+          body['refreshToken'] = rt;
+        }
+        await _client.post(
+          uri,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $bearer',
+          },
+          body: jsonEncode(body),
+        );
+      } else if (rt != null && rt.isNotEmpty) {
+        await _client.post(
+          uri,
+          headers: const {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode({'refreshToken': rt}),
+        );
+      }
     } catch (_) {
       // Best-effort; still clear locally below.
     } finally {
@@ -250,6 +273,7 @@ class ApiAuthRepository implements AuthRepository {
     String? rateCurrency,
     num? coverageRadius,
     String? profilePhotoUrl,
+    String? profilePhotoPath,
     List<String>? skills,
   }) async {
     final uri = Uri.parse('$_baseUrl${ApiConstants.authRegisterPath}');
@@ -257,36 +281,115 @@ class ApiAuthRepository implements AuthRepository {
     // Sole traders register as MECHANIC; companies register as COMPANY.
     final role = businessType == 'COMPANY' ? 'COMPANY' : 'MECHANIC';
 
-    final payload = <String, dynamic>{
-      'role': role,
-      'email': email,
+    final fields = <String, String>{
+      'email': email.trim(),
       'password': password,
       'confirmPassword': confirmPassword,
-      'fullName': fullName,
-      'displayName': displayName,
-      'phone': phone,
+      'role': role,
+      'fullName': fullName.trim(),
+      'phone': phone.trim(),
       'businessType': businessType,
-      'businessName': businessName,
-      'companyName': companyName,
-      'baseLocationText': baseLocationText,
-      'basePostcode': basePostcode,
-      'hourlyRate': hourlyRate,
-      'emergencyRate': emergencyRate,
-      'emergencySurcharge': emergencySurcharge,
-      'callOutFee': callOutFee,
-      'rateCurrency': rateCurrency,
-      'coverageRadius': coverageRadius,
-      'profilePhotoUrl': profilePhotoUrl,
-      'skills': skills,
-    }..removeWhere((_, v) => v == null);
+    };
 
+    final dn = displayName?.trim();
+    if (dn != null && dn.isNotEmpty) fields['displayName'] = dn;
+
+    final bn = businessName?.trim();
+    if (bn != null && bn.isNotEmpty) fields['businessName'] = bn;
+
+    final cn = companyName?.trim();
+    if (cn != null && cn.isNotEmpty) fields['companyName'] = cn;
+
+    final blt = baseLocationText?.trim();
+    if (blt != null && blt.isNotEmpty) fields['baseLocationText'] = blt;
+
+    final bp = basePostcode?.trim();
+    if (bp != null && bp.isNotEmpty) fields['basePostcode'] = bp;
+
+    if (hourlyRate != null) fields['hourlyRate'] = '$hourlyRate';
+    if (emergencyRate != null) fields['emergencyRate'] = '$emergencyRate';
+    if (emergencySurcharge != null) fields['emergencySurcharge'] = '$emergencySurcharge';
+    if (callOutFee != null) fields['callOutFee'] = '$callOutFee';
+
+    final rc = rateCurrency?.trim();
+    if (rc != null && rc.isNotEmpty) fields['rateCurrency'] = rc;
+
+    if (coverageRadius != null) fields['coverageRadius'] = '$coverageRadius';
+
+    fields['skills'] = jsonEncode(skills ?? const <String>[]);
+
+    final pUrl = profilePhotoUrl?.trim();
+    if (pUrl != null && pUrl.isNotEmpty) fields['profilePhotoUrl'] = pUrl;
+
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['Accept'] = 'application/json'
+      ..fields.addAll(fields);
+
+    final photoPath = profilePhotoPath?.trim();
+    if (photoPath != null && photoPath.isNotEmpty) {
+      final f = File(photoPath);
+      if (await f.exists()) {
+        final filename = _normalizeRegisterPhotoFilename(photoPath);
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            photoPath,
+            filename: filename,
+            contentType: _registerImageMediaTypeForFilename(filename),
+          ),
+        );
+      }
+    }
+
+    final streamed = await _client.send(request);
+    final res = await http.Response.fromStream(streamed);
+
+    Map<String, dynamic> body;
+    try {
+      final decoded = jsonDecode(res.body);
+      body = (decoded is Map<String, dynamic>) ? decoded : <String, dynamic>{};
+    } catch (_) {
+      body = <String, dynamic>{};
+    }
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      final msg = _pickString(body, ['message', 'error', 'msg']) ??
+          'Registration failed (HTTP ${res.statusCode}).';
+      throw AuthException(msg);
+    }
+  }
+
+  @override
+  Future<void> registerMechanicEmployee({
+    required String email,
+    required String password,
+    required String confirmPassword,
+    required String inviteToken,
+    required String fullName,
+    required String phone,
+    required String displayName,
+    required String baseLocationText,
+    required List<String> skills,
+  }) async {
+    final uri = Uri.parse('$_baseUrl${ApiConstants.authRegisterPath}');
     final res = await _client.post(
       uri,
       headers: const {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body: jsonEncode(payload),
+      body: jsonEncode({
+        'email': email.trim(),
+        'password': password,
+        'confirmPassword': confirmPassword,
+        'role': 'MECHANIC_EMPLOYEE',
+        'inviteToken': inviteToken.trim(),
+        'fullName': fullName.trim(),
+        'phone': phone.trim(),
+        'displayName': displayName.trim(),
+        'baseLocationText': baseLocationText.trim(),
+        'skills': skills,
+      }),
     );
 
     Map<String, dynamic> body;
@@ -303,6 +406,28 @@ class ApiAuthRepository implements AuthRepository {
       throw AuthException(msg);
     }
   }
+}
+
+MediaType _registerImageMediaTypeForFilename(String filename) {
+  final lower = filename.toLowerCase();
+  if (lower.endsWith('.png')) return MediaType('image', 'png');
+  if (lower.endsWith('.gif')) return MediaType('image', 'gif');
+  if (lower.endsWith('.webp')) return MediaType('image', 'webp');
+  if (lower.endsWith('.heic') || lower.endsWith('.heif')) {
+    return MediaType('image', 'heic');
+  }
+  return MediaType('image', 'jpeg');
+}
+
+final _registerPhotoExt =
+    RegExp(r'\.(jpe?g|png|gif|webp|heic|heif)$', caseSensitive: false);
+
+String _normalizeRegisterPhotoFilename(String filePath) {
+  var name = filePath.trim().replaceAll('\\', '/');
+  if (name.contains('/')) name = name.split('/').last;
+  if (name.isEmpty) return 'profile.jpg';
+  if (!_registerPhotoExt.hasMatch(name)) return '$name.jpg';
+  return name;
 }
 
 class AuthException implements Exception {

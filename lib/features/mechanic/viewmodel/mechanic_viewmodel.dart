@@ -8,9 +8,11 @@ import '../../../data/models/fleet_billing_payment_method.dart';
 import '../../../data/models/job_offer.dart';
 import '../../../data/models/mechanic_job_detail.dart';
 import '../../../data/models/mechanic_me_profile.dart';
+import '../../../data/models/job_chat_models.dart';
 import '../models/mechanic_profile_extras.dart';
 import '../../../data/repositories/app_repository.dart';
 import '../../../data/services/mechanic_api_service.dart';
+import '../../../data/services/chat_api_service.dart';
 // ignore: unused_import
 import '../../../features/categories/job_taxonomy.dart';
 
@@ -459,6 +461,7 @@ class MechanicViewModel extends ChangeNotifier {
   final JobRepository _jobs;
   final AuthRepository _auth;
   final MechanicApiService _api;
+  final ChatApiService _chat = ChatApiService();
 
   String tab = 'feed';
   bool online = true;
@@ -522,55 +525,46 @@ class MechanicViewModel extends ChangeNotifier {
   String? jobQuoteDetailError;
   bool quoteSubmitBusy = false;
 
-  /// Profile → Messages (demo threads until chat API is wired).
-  List<MechanicMessageThread> messageThreads = const [
-    MechanicMessageThread(
-      id: 't1',
-      title: 'Logistix Transport',
-      subtitle: 'TF-8810 · Brake inspection',
-      photoUrl: 'https://i.pravatar.cc/150?img=12',
-      preview: 'Thanks — invoice received. Appreciated the fast turnaround.',
-      timeLabel: 'Yesterday',
-      phone: '+44 7700 900111',
-    ),
-    MechanicMessageThread(
-      id: 't2',
-      title: 'Sarah Mitchell',
-      subtitle: 'Fleet manager · NorthWest Haulage',
-      photoUrl: 'https://i.pravatar.cc/150?img=47',
-      preview: 'Can you fit us in Thursday morning for the DAF?',
-      timeLabel: '09:12',
-      phone: '+44 7700 900222',
-    ),
-    MechanicMessageThread(
-      id: 't3',
-      title: 'TruckFix Support',
-      subtitle: 'System & billing',
-      photoUrl: 'https://i.pravatar.cc/150?img=3',
-      preview: 'Your VAT certificate was verified successfully.',
-      timeLabel: 'Mon',
-      phone: '+44 330 123 4567',
-    ),
-  ];
+  /// Profile → Messages (`GET /api/v1/chat/threads`).
+  List<MechanicMessageThread> messageThreads = [];
+  bool messageThreadsLoading = false;
+  String? messageThreadsError;
+
   MechanicMessageThread? activeChatPeer;
 
-  /// Profile → Employees (local list until team API is wired).
-  List<MechanicEmployeeRow> mechanicEmployees = const [
-    MechanicEmployeeRow(
-      id: 'e1',
-      name: 'James Porter',
-      email: 'james.porter@northwesthaulage.co.uk',
-      phone: '+44 7700 900333',
-    ),
-    MechanicEmployeeRow(
-      id: 'e2',
-      name: 'Aisha Khan',
-      email: 'aisha.khan@northwesthaulage.co.uk',
-      phone: '+44 7700 900444',
-    ),
-  ];
-
   List<JobOffer> get rawJobs => _jobs.mechanicJobsNearby();
+
+  Future<void> loadMessageThreads() async {
+    messageThreadsLoading = true;
+    messageThreadsError = null;
+    notifyListeners();
+    try {
+      final session = await _auth.getSession();
+      final token = session?.accessToken;
+      if (token == null || token.trim().isEmpty) {
+        throw Exception('Missing access token. Please login again.');
+      }
+      final env = await _chat.fetchThreads(accessToken: token);
+      final rows = ChatApiService.parseThreadsEnvelope(env);
+      messageThreads = rows
+          .map(
+            (r) => MechanicMessageThread(
+              jobId: r.conversationId,
+              title: r.title,
+              subtitle: r.subtitle,
+              photoUrl: r.counterpartyPhotoUrl,
+              preview: r.preview,
+              timeLabel: formatChatThreadTime(r.sortTimeIso),
+            ),
+          )
+          .toList();
+    } catch (e) {
+      messageThreadsError = e.toString();
+    } finally {
+      messageThreadsLoading = false;
+      notifyListeners();
+    }
+  }
 
   Future<void> loadMeProfile() async {
     meProfileLoading = true;
@@ -615,22 +609,29 @@ class MechanicViewModel extends ChangeNotifier {
     }
   }
 
-  /// Notification toggles + alert radius (flat keys per backend / Postman).
+  /// Notification toggles + alert radius — `PATCH /api/v1/users/me` with nested `preferences`
+  /// (matches `GET /users/me` shape: `preferences.pushEnabled`, `preferences.notifications`, …).
   Future<void> patchMechanicNotificationSettings({
     required bool pushEnabled,
     required int alertRadiusMiles,
     required bool newBreakdownJobs,
     required bool jobAcceptedDeclined,
     required bool paymentReceived,
-    required bool systemAndAppAlerts,
+    required bool systemAlerts,
+    required bool appAlerts,
   }) {
     return patchUsersMe({
-      'pushEnabled': pushEnabled,
-      'alertRadiusMiles': alertRadiusMiles,
-      'newBreakdownJobs': newBreakdownJobs,
-      'jobAcceptedDeclined': jobAcceptedDeclined,
-      'paymentReceived': paymentReceived,
-      'systemAndAppAlerts': systemAndAppAlerts,
+      'preferences': {
+        'pushEnabled': pushEnabled,
+        'alertRadiusMiles': alertRadiusMiles,
+        'notifications': {
+          'newBreakdownJobs': newBreakdownJobs,
+          'jobAcceptedDeclined': jobAcceptedDeclined,
+          'paymentReceived': paymentReceived,
+          'systemAlerts': systemAlerts,
+          'appAlerts': appAlerts,
+        },
+      },
     });
   }
 
@@ -687,12 +688,17 @@ class MechanicViewModel extends ChangeNotifier {
       'billingAddress': billingAddress.trim(),
       'vatNumber': vatNumber.trim(),
       'vatRegistered': vatRegistered,
-      'pushEnabled': p.pushEnabled,
-      'alertRadiusMiles': p.alertRadiusMiles,
-      'newBreakdownJobs': p.notifNewBreakdownJobs,
-      'jobAcceptedDeclined': p.notifJobAcceptedDeclined,
-      'paymentReceived': p.notifPaymentReceived,
-      'systemAndAppAlerts': p.notifSystemAlerts,
+      'preferences': {
+        'pushEnabled': p.pushEnabled,
+        'alertRadiusMiles': p.alertRadiusMiles,
+        'notifications': {
+          'newBreakdownJobs': p.notifNewBreakdownJobs,
+          'jobAcceptedDeclined': p.notifJobAcceptedDeclined,
+          'paymentReceived': p.notifPaymentReceived,
+          'systemAlerts': p.notifSystemAlerts,
+          'appAlerts': p.notifAppAlerts,
+        },
+      },
     };
 
     await patchUsersMe(payload);
@@ -718,6 +724,9 @@ class MechanicViewModel extends ChangeNotifier {
     if (t == 'profile') {
       loadMeProfile();
     }
+    if (t == 'profile-messages') {
+      loadMessageThreads();
+    }
     if (t == 'edit-profile' && meProfile == null && !meProfileLoading) {
       loadMeProfile();
     }
@@ -732,26 +741,6 @@ class MechanicViewModel extends ChangeNotifier {
   void closeMessageChat() {
     activeChatPeer = null;
     tab = 'profile-messages';
-    notifyListeners();
-  }
-
-  void addMechanicEmployee({
-    required String name,
-    required String email,
-    required String phone,
-    required String password,
-  }) {
-    if (password.isEmpty) return;
-    final now = DateTime.now();
-    mechanicEmployees = [
-      MechanicEmployeeRow(
-        id: 'emp_${now.millisecondsSinceEpoch}',
-        name: name.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-      ),
-      ...mechanicEmployees,
-    ];
     notifyListeners();
   }
 
@@ -874,6 +863,22 @@ class MechanicViewModel extends ChangeNotifier {
     }
   }
 
+  /// `availabilityStatus` on each job (or `assignedMechanic`) reflects mechanic availability in feed responses.
+  static bool? _readAvailabilityFromFeedRows(List<Map<String, dynamic>> rows) {
+    for (final m in rows) {
+      final top = '${m['availabilityStatus'] ?? ''}'.trim().toUpperCase();
+      if (top == 'ONLINE') return true;
+      if (top == 'OFFLINE') return false;
+      final am = m['assignedMechanic'];
+      if (am is Map<String, dynamic>) {
+        final s = '${am['availabilityStatus'] ?? ''}'.trim().toUpperCase();
+        if (s == 'ONLINE') return true;
+        if (s == 'OFFLINE') return false;
+      }
+    }
+    return null;
+  }
+
   Future<void> loadJobFeed() async {
     feedLoading = true;
     feedError = null;
@@ -892,10 +897,12 @@ class MechanicViewModel extends ChangeNotifier {
         radiusMiles: radiusMi,
       );
       final list = (body['data'] as List<dynamic>?) ?? [];
-      feedJobs = list
-          .whereType<Map<String, dynamic>>()
-          .map(JobOffer.fromJson)
-          .toList();
+      final rows = list.whereType<Map<String, dynamic>>().toList();
+      feedJobs = rows.map(JobOffer.fromJson).toList();
+      final fromApi = MechanicViewModel._readAvailabilityFromFeedRows(rows);
+      if (fromApi != null) {
+        online = fromApi;
+      }
     } catch (e) {
       feedError = e.toString();
     } finally {
@@ -1441,9 +1448,7 @@ class MechanicViewModel extends ChangeNotifier {
         tab == 'edit-profile' ||
         tab == 'payment-methods' ||
         tab == 'profile-messages' ||
-        tab == 'profile-messages-chat' ||
-        tab == 'profile-employees' ||
-        tab == 'profile-employees-add') {
+        tab == 'profile-messages-chat') {
       return 'profile';
     }
     return tab;

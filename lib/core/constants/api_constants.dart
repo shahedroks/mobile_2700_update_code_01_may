@@ -20,6 +20,9 @@ abstract final class ApiConstants {
   static const String supportTicketsPath = '/api/v1/support/tickets';
   static const String jobsPath = '/api/v1/jobs';
 
+  /// Job-scoped chat (see `lib/react/check.md`).
+  static const String chatThreadsPath = '/api/v1/chat/threads';
+
   /// Fleet submits mechanic review: `POST /api/v1/fleet/reviews`
   static const String fleetReviewsPath = '/api/v1/fleet/reviews';
 

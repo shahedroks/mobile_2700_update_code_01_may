@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../data/repositories/app_repository.dart';
 import '../../../data/services/mechanic_api_service.dart';
-import '../../../routes/app_routes.dart';
-import '../../auth/viewmodel/auth_viewmodel.dart';
 import '../../mechanic/screens/mechanic_app_shell.dart';
 import '../../mechanic/viewmodel/mechanic_viewmodel.dart';
+import 'employee_profile_page.dart';
 
 class EmployeeViewModel extends ChangeNotifier {
   String screen = 'employee-jobs';
@@ -77,34 +75,9 @@ class _EmployeePageContent extends StatelessWidget {
       );
     }
     if (vm.screen == 'employee-profile') {
-      return const _EmployeeProfilePage();
+      return const EmployeeProfilePage();
     }
     return const _EmployeeJobsList();
-  }
-}
-
-class _EmployeeProfilePage extends StatelessWidget {
-  const _EmployeeProfilePage();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        const ListTile(
-          title: Text('Mechanic employee', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-          subtitle: Text('swiftmechanics.co.uk', style: TextStyle(color: AppColors.textMuted)),
-        ),
-        OutlinedButton.icon(
-          onPressed: () async {
-            await context.read<AuthViewModel>().logout();
-            if (context.mounted) context.go(AppRoutes.login);
-          },
-          icon: const Icon(Icons.logout, color: AppColors.red),
-          label: const Text('Log out', style: TextStyle(color: AppColors.red)),
-        ),
-      ],
-    );
   }
 }
 

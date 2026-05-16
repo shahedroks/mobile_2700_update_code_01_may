@@ -220,23 +220,49 @@ class _FleetPostJobScreenState extends State<FleetPostJobScreen> {
   }
 
   Future<bool> _ensureLocationPermission() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
+    // Use Geolocator for the OS prompt: it talks to CLLocationManager / FusedLocationProvider
+    // directly. (permission_handler on iOS requires PERMISSION_* macros in the Podfile; if those
+    // are missing, location requests there can fail without showing the system sheet.)
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.deniedForever) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please turn on location services.')),
+          SnackBar(
+            content: const Text('Location is turned off for this app. Open Settings to allow access.'),
+            action: SnackBarAction(
+              label: 'Settings',
+              onPressed: () => openAppSettings(),
+            ),
+          ),
         );
       }
       return false;
     }
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+    if (permission != LocationPermission.whileInUse && permission != LocationPermission.always) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Location permission is required for GPS.')),
+          const SnackBar(content: Text('Location permission is required to use GPS for this job.')),
+        );
+      }
+      return false;
+    }
+
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Please turn on Location Services.'),
+            action: SnackBarAction(
+              label: 'Settings',
+              onPressed: () async {
+                await Geolocator.openLocationSettings();
+              },
+            ),
+          ),
         );
       }
       return false;

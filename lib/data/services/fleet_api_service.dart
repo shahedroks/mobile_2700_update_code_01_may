@@ -39,6 +39,23 @@ class FleetApiService {
     return _decodeOrThrow(res, defaultMessage: 'Failed to load vehicles');
   }
 
+  /// `GET /api/v1/fleet/vehicles/:vehicleId` — vehicle + recentJobs + meta.
+  Future<Map<String, dynamic>> fetchFleetVehicleById({
+    required String accessToken,
+    required String vehicleId,
+  }) async {
+    final id = vehicleId.trim();
+    final uri = Uri.parse('$_baseUrl${ApiConstants.fleetVehiclesPath}/${Uri.encodeComponent(id)}');
+    final res = await _client.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+    return _decodeOrThrow(res, defaultMessage: 'Failed to load vehicle');
+  }
+
   /// `POST /api/v1/fleet/vehicles`
   Future<Map<String, dynamic>> createFleetVehicle({
     required String accessToken,
